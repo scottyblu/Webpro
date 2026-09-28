@@ -1,3 +1,5 @@
+import { normalizeKey, normalizeSupabaseUrl } from "@/lib/supabase/config";
+
 /**
  * Central place for reading environment variables.
  * Every secret is read from the environment — never hardcoded.
@@ -13,12 +15,13 @@ function required(name: string, value: string | undefined): string {
 }
 
 // NEXT_PUBLIC_* values must be referenced literally so Next.js can inline them in the browser bundle.
-export const supabaseUrl = () => required("NEXT_PUBLIC_SUPABASE_URL", process.env.NEXT_PUBLIC_SUPABASE_URL);
+export const supabaseUrl = () =>
+  required("NEXT_PUBLIC_SUPABASE_URL", normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL));
 export const supabaseAnonKey = () =>
-  required("NEXT_PUBLIC_SUPABASE_ANON_KEY", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  required("NEXT_PUBLIC_SUPABASE_ANON_KEY", normalizeKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY));
 
 export const supabaseServiceRoleKey = () =>
-  required("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
+  required("SUPABASE_SERVICE_ROLE_KEY", normalizeKey(process.env.SUPABASE_SERVICE_ROLE_KEY));
 
 /** Stripe is optional: card payments are offered only when a secret key is configured. */
 export const stripeEnabled = () => !!process.env.STRIPE_SECRET_KEY;
