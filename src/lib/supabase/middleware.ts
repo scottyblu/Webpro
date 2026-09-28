@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { normalizeKey, normalizeSupabaseUrl } from "./config";
 
 const ADMIN_PREFIXES = ["/admin", "/member-management", "/payment-management", "/reports"];
 const MEMBER_PREFIXES = ["/dashboard"];
@@ -18,8 +19,8 @@ function matches(pathname: string, prefixes: string[]) {
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = normalizeSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  const key = normalizeKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   if (!url || !key) return response; // Env not configured yet; pages will show a clear error.
 
   const supabase = createServerClient(url, key, {
