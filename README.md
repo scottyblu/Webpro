@@ -30,7 +30,7 @@ A membership-dues app for a private club. Members pay **$20/month** by **Zelle**
 ## 1. Supabase setup
 
 1. Go to <https://supabase.com/dashboard> → **New project**. Pick a name (e.g. `breakfast-club`), a strong database password, and the region closest to you. Wait for it to finish provisioning.
-2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. Then do the same with [`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql). (See [section 2](#2-database-sql).)
+2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. Then do the same with [`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql) and [`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql). (See [section 2](#2-database-sql).)
 3. **Copy your keys**: **Project Settings** (gear icon) →
    - **Data API** → *Project URL* → this is `NEXT_PUBLIC_SUPABASE_URL`
    - **API Keys** → the *anon / public* key (or a *publishable* key, `sb_publishable_…`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -62,6 +62,7 @@ The complete schema is in two files. Run them **in order** in the Supabase SQL E
 
 1. **[`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql)**: all tables, security and triggers
 2. **[`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql)**: Zelle settings, plus a rule that a member can report only one Zelle payment per month while it waits for confirmation
+3. **[`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql)**: the admin “Notification emails” list
 
 Together they create:
 
@@ -131,7 +132,8 @@ Copy [`.env.example`](.env.example) to `.env.local` and fill in:
 | `STRIPE_WEBHOOK_SECRET` | only for card payments | Stripe → Developers → Webhooks → endpoint → Signing secret (or `stripe listen` output locally) |
 | `STRIPE_PRICE_ID` | no | Stripe → Product catalog → your monthly price (`price_…`). Leave empty to use the fee from Settings |
 | `CRON_SECRET` | yes for reminders | Any long random string: `openssl rand -hex 32` |
-| `RESEND_API_KEY`, `NOTIFICATIONS_FROM_EMAIL` | no | <https://resend.com> → API Keys; the from-address must be on a domain verified in Resend |
+| `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | recommended | The Gmail account that sends all emails, plus its app password (see [Email setup](#email-setup-gmail)) |
+| `RESEND_API_KEY`, `NOTIFICATIONS_FROM_EMAIL` | no | Alternative to Gmail: <https://resend.com> → API Keys; the from-address must be on a domain verified in Resend |
 | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | no | <https://console.twilio.com> → Account Info; a Twilio phone number |
 
 No API key is hardcoded anywhere. The admin **Settings** page shows which integrations are connected.
@@ -188,6 +190,24 @@ Any Node.js host that runs Next.js works (Netlify, Render, Railway, a VPS with `
 3. Sign out and sign back in — you’ll land on `/admin`.
 4. Add more administrators later from **Settings → Administrators** (they must register first).
 
+### Email setup (Gmail)
+
+Without this, the app works but sends no emails. With it, members get payment confirmations and reminders, and the addresses in **Settings → Notification emails** get admin alerts:
+- when a member reports a Zelle payment
+- a list of who still owes, a few days after the due date
+- a summary at the start of each month
+
+1. Pick the Gmail account that will send the emails. A new one just for the club, like `breakfastclub.dues@gmail.com`, is best.
+2. Signed in to that account, go to <https://myaccount.google.com/security> and turn on **2-Step Verification**.
+3. Go to <https://myaccount.google.com/apppasswords>, type a name like `Breakfast Club app`, and click **Create**. Google shows a 16-letter password like `abcd efgh ijkl mnop`. Copy it.
+4. In Vercel → your project → **Settings → Environment Variables**, add:
+   - `GMAIL_ADDRESS` = the Gmail address
+   - `GMAIL_APP_PASSWORD` = the 16-letter app password (spaces are fine)
+5. **Deployments** → ⋯ → **Redeploy**.
+6. In the app: **Settings → Notification emails**, enter who should get alerts (one per line), then **Save settings** and **Send test email**.
+
+Scheduled alerts (overdue list, monthly summary, member reminders) run from the daily job, which needs `CRON_SECRET` set in Vercel.
+
 ## 8. Install it as a phone app
 
 The Breakfast Club is an installable app (a Progressive Web App). Once it’s deployed, members and admins add it to their home screen. It gets its own icon, opens full-screen with no browser bar, and uses bottom tabs like a normal app. There’s no app store and no fee, and every update you deploy reaches everyone right away.
@@ -226,7 +246,7 @@ Notes:
 
 **Security.** `/admin`, `/member-management`, `/payment-management` and `/reports` are protected three times on the server: in middleware, in the admin layout, and in every server action / API route (`requireAdmin()`). The database’s Row Level Security additionally prevents members from reading anyone else’s data even if they call Supabase directly. Card numbers never touch this app — Stripe Checkout and the Customer Portal handle them.
 
-**Notifications.** [`src/lib/notifications`](src/lib/notifications) contains the four message types (payment confirmation, upcoming payment reminder, failed payment notice, past-due reminder), their wording (`templates.ts`), and pluggable providers: email via Resend and SMS via Twilio switch on automatically when their env vars are set; every notification is also logged. Sending is de-duplicated through `notification_log`. To use another provider, add a file in `providers/` implementing `NotificationProvider` and register it in `index.ts`.
+**Notifications.** [`src/lib/notifications`](src/lib/notifications) contains the member messages (payment confirmation, upcoming payment reminder, failed payment notice, past-due reminder), their wording (`templates.ts`), and the admin alerts (`notifyAdmins`: Zelle payment reported, card payment failed, overdue list, monthly summary) sent to **Settings → Notification emails**. Providers switch on automatically when their env vars are set: email via Gmail (or Resend) and SMS via Twilio. Every notification is also logged. Sending is de-duplicated through `notification_log`. To use another provider, add a file in `providers/` implementing `NotificationProvider` and register it in `index.ts`.
 
 ## Project structure
 

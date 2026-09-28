@@ -6,7 +6,7 @@ import { getCurrentMember, getCurrentUser, requireAdmin } from "@/lib/auth";
 import { MANUAL_PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import { siteUrl } from "@/lib/env";
 import { formatMoney } from "@/lib/format";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmins } from "@/lib/notifications";
 import { addMonths, comparePeriods, currentPeriod, parsePeriodKey, periodLabel, periodOfDateString, zonedDateString } from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -135,7 +135,7 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
   if (existing?.some((p) => p.payment_status === "paid")) return { error: `You're already marked paid for ${periodLabel(period)}.` };
   if (existing?.some((p) => p.payment_status === "pending")) return { error: `Your ${periodLabel(period)} payment is already waiting for confirmation.` };
 
-  const { error } = await db.from("payments").insert({
+  const { data: inserted, error } = await db.from("payments").insert({
     member_id: member.id,
     member_name: member.full_name,
     amount_cents: settings.monthly_fee_cents,
@@ -146,11 +146,25 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
     payment_method: "zelle",
     payment_status: "pending",
     notes: ["Reported by member", note].filter(Boolean).join(" — "),
-  });
+  }).select("id").single();
   if (error) {
     if (error.code === "23505") return { error: `Your ${periodLabel(period)} payment is already recorded.` };
     return { error: "Could not save. Please try again." };
   }
+
+  const fee = formatMoney(settings.monthly_fee_cents, settings.currency);
+  await notifyAdmins(
+    "admin_zelle_reported",
+    `${member.full_name} sent a ${fee} Zelle payment for ${periodLabel(period)}`,
+    [
+      `${member.full_name} says they sent their ${fee} Zelle payment for ${periodLabel(period)}.`,
+      ...(note ? [`Their note: "${note}"`] : []),
+      "",
+      `Check your bank for a Zelle payment from ${member.full_name}, then open the admin dashboard and tap "Received" (or "Not received"):`,
+      `${siteUrl()}/admin`,
+    ].join("\n"),
+    `admin_zelle_reported:${inserted.id}`,
+  );
 
   PAYMENT_PATHS.forEach((p) => revalidatePath(p));
   return {
