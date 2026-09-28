@@ -16,6 +16,8 @@ export interface ClubSettings {
   admin_name: string | null;
   admin_email: string | null;
   admin_phone: string | null;
+  zelle_recipient_name: string | null;
+  zelle_contact: string | null;
   updated_at: string;
 }
 

@@ -23,8 +23,9 @@ export default async function SettingsPage() {
   const admins = (data ?? []) as AdminUser[];
 
   const integrations = [
-    { name: "Stripe payments", on: !!process.env.STRIPE_SECRET_KEY },
-    { name: "Stripe webhooks", on: !!process.env.STRIPE_WEBHOOK_SECRET },
+    { name: "Zelle payments", on: !!settings.zelle_contact },
+    { name: "Stripe card payments (optional)", on: !!process.env.STRIPE_SECRET_KEY },
+    { name: "Stripe webhooks (optional)", on: !!process.env.STRIPE_WEBHOOK_SECRET },
     { name: "Email notifications (Resend)", on: !!process.env.RESEND_API_KEY && !!process.env.NOTIFICATIONS_FROM_EMAIL },
     { name: "SMS notifications (Twilio)", on: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN && !!process.env.TWILIO_FROM_NUMBER },
     { name: "Scheduled reminders (CRON_SECRET)", on: !!process.env.CRON_SECRET },

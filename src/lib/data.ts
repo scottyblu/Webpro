@@ -191,3 +191,15 @@ export async function getMemberTotals(supabase: SupabaseClient): Promise<Map<str
   for (const r of rows) totals.set(r.member_id!, (totals.get(r.member_id!) ?? 0) + r.amount_cents);
   return totals;
 }
+
+/** Member-reported payments waiting for an admin to confirm (oldest first). */
+export async function getPendingReports(supabase: SupabaseClient): Promise<Payment[]> {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("*")
+    .eq("payment_status", "pending")
+    .is("stripe_payment_id", null)
+    .order("created_at");
+  if (error) throw new Error(`Could not load pending payments: ${error.message}`);
+  return (data ?? []) as Payment[];
+}

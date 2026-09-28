@@ -32,7 +32,7 @@ export function SettingsForm({ settings }: { settings: ClubSettings }) {
         <Field
           label="Monthly membership fee ($)"
           htmlFor="monthly_fee"
-          hint="Used for new Stripe subscriptions, expected revenue, and the default manual payment amount. Existing Stripe subscriptions keep their current price."
+          hint="The amount members pay each month. Also used for expected revenue and new Stripe subscriptions (existing Stripe subscriptions keep their price)."
         >
           <Input id="monthly_fee" name="monthly_fee" type="number" min="1" step="0.01" inputMode="decimal" defaultValue={(settings.monthly_fee_cents / 100).toFixed(2)} required />
         </Field>
@@ -52,6 +52,19 @@ export function SettingsForm({ settings }: { settings: ClubSettings }) {
               </option>
             ))}
           </Select>
+        </Field>
+      </fieldset>
+
+      <fieldset className="grid gap-4 sm:grid-cols-2">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">Zelle (shown to members)</legend>
+        <p className="-mt-1 text-sm text-stone-500 sm:col-span-2">
+          Fill in the Zelle email or phone number where members should send dues. Leave blank to hide the Zelle option.
+        </p>
+        <Field label="Recipient name (as it appears in Zelle)" htmlFor="zelle_recipient_name">
+          <Input id="zelle_recipient_name" name="zelle_recipient_name" defaultValue={settings.zelle_recipient_name ?? ""} placeholder="e.g. John Smith" />
+        </Field>
+        <Field label="Zelle email or phone number" htmlFor="zelle_contact">
+          <Input id="zelle_contact" name="zelle_contact" defaultValue={settings.zelle_contact ?? ""} placeholder="e.g. dues@example.com or (555) 123-4567" />
         </Field>
       </fieldset>
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, UserPlus } from "lucide-react";
 import { PaymentTable } from "@/components/admin/payment-table";
+import { PendingPayments } from "@/components/admin/pending-payments";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SummaryCards } from "@/components/admin/summary-cards";
 import { BarChart, PaidProgress } from "@/components/ui/bar-chart";
@@ -9,7 +10,7 @@ import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/lib/auth";
-import { getMonthOverview, getMonthlyHistory } from "@/lib/data";
+import { getMonthOverview, getMonthlyHistory, getPendingReports } from "@/lib/data";
 import { formatMoney } from "@/lib/format";
 import { periodKey, periodLabel, periodShortLabel } from "@/lib/periods";
 import { createClient } from "@/lib/supabase/server";
@@ -19,9 +20,10 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function AdminDashboard() {
   await requireAdmin();
   const supabase = await createClient();
-  const [{ settings, period, rows, summary }, { history }] = await Promise.all([
+  const [{ settings, period, rows, summary }, { history }, pending] = await Promise.all([
     getMonthOverview(supabase),
     getMonthlyHistory(supabase, 6),
+    getPendingReports(supabase),
   ]);
 
   return (
@@ -42,6 +44,11 @@ export default async function AdminDashboard() {
       />
 
       <InstallPrompt className="mb-4 lg:hidden" />
+      {pending.length > 0 && (
+        <div className="mb-6">
+          <PendingPayments payments={pending} timeZone={settings.timezone} />
+        </div>
+      )}
       <SummaryCards summary={summary} currency={settings.currency} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

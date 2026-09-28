@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCurrentMember } from "@/lib/auth";
-import { siteUrl } from "@/lib/env";
+import { siteUrl, stripeEnabled } from "@/lib/env";
 import { getStripe } from "@/lib/stripe/client";
 import { syncSubscription } from "@/lib/stripe/sync";
 
@@ -11,6 +11,7 @@ import { syncSubscription } from "@/lib/stripe/sync";
  */
 export async function POST() {
   const base = siteUrl();
+  if (!stripeEnabled()) return NextResponse.redirect(`${base}/dashboard?error=no-stripe`, 303);
   const member = await getCurrentMember();
   if (!member) return NextResponse.redirect(`${base}/login`, 303);
   if (!member.stripe_subscription_id) return NextResponse.redirect(`${base}/dashboard`, 303);

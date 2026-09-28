@@ -10,6 +10,8 @@ export async function getSettings(supabase: SupabaseClient): Promise<ClubSetting
     admin_name: null,
     admin_email: null,
     admin_phone: null,
+    zelle_recipient_name: null,
+    zelle_contact: null,
     updated_at: new Date().toISOString(),
     ...DEFAULT_SETTINGS,
     ...(data ?? {}),

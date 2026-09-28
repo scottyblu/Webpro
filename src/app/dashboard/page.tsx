@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarClock, CreditCard, Receipt } from "lucide-react";
+import { CalendarClock, CreditCard, Receipt, Send } from "lucide-react";
+import { ZelleCard } from "@/components/member/zelle-card";
 import { Alert } from "@/components/ui/alert";
 import { MembershipBadge, PaymentStatusBadge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
@@ -9,8 +10,9 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { getAdminRecord, getCurrentMember } from "@/lib/auth";
 import { buildMonthRows, hasLiveSubscription, paidPeriodKeys } from "@/lib/billing";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import { stripeEnabled } from "@/lib/env";
 import { formatDate, formatMoney } from "@/lib/format";
-import { currentPeriod, periodLabel } from "@/lib/periods";
+import { addMonths, comparePeriods, currentPeriod, periodKey, periodLabel, periodOfDateString, periodRange } from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 import type { Payment } from "@/lib/types";
@@ -26,6 +28,7 @@ const MESSAGES: Record<string, { tone: "success" | "error" | "warning" | "info";
   "error=no-member": { tone: "error", text: "We couldn't find your membership record. Please contact a club administrator." },
   "error=no-customer": { tone: "error", text: "You don't have saved payment details yet. Use \"Pay\" to set up your membership." },
   "error=checkout": { tone: "error", text: "We couldn't start checkout. Please try again." },
+  "error=no-stripe": { tone: "error", text: "Card payments aren't available. Please use one of the payment options below." },
 };
 
 export default async function MemberDashboard({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -79,6 +82,28 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
   const totalPaid = payments.filter((p) => p.payment_status === "paid").reduce((s, p) => s + p.amount_cents, 0);
   const firstName = member.full_name.split(" ")[0];
 
+  const canPay = member.membership_status !== "inactive";
+  const stripeOn = stripeEnabled();
+  const showCardPay = stripeOn && canPay && !autopay;
+  const zelleOn = !!settings.zelle_contact && canPay;
+  const pendingZelle = status === "PENDING" && payments.some(
+    (p) => p.payment_status === "pending" && p.payment_method !== "stripe" && p.payment_year === period.year && p.payment_month === period.month,
+  );
+
+  // Months a Zelle payment can be reported for: not already paid or waiting for confirmation.
+  const joined = periodOfDateString(member.joined_date);
+  const earliest = comparePeriods(joined, addMonths(period, -6)) > 0 ? joined : addMonths(period, -6);
+  const taken = new Set(
+    payments
+      .filter((p) => p.payment_status === "paid" || p.payment_status === "pending")
+      .map((p) => periodKey({ year: p.payment_year, month: p.payment_month })),
+  );
+  const openPeriods = periodRange(earliest, addMonths(period, 3))
+    .reverse()
+    .filter((p) => !taken.has(periodKey(p)));
+  const zellePeriod =
+    openPeriods.find((p) => comparePeriods(p, period) === 0) ?? openPeriods.find((p) => comparePeriods(p, period) < 0) ?? openPeriods[0];
+
   return (
     <div className="space-y-6">
       {flash && <Alert tone={flash.tone}>{flash.text}</Alert>}
@@ -108,7 +133,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
               <span className="text-stone-700">
                 {status === "PAID" && `You're paid up for ${periodLabel(period)}. Thank you!`}
                 {status === "UNPAID" && `Your ${fee} membership for ${periodLabel(period)} is due.`}
-                {status === "PENDING" && "Your payment is processing."}
+                {status === "PENDING" &&
+                  (pendingZelle
+                    ? "Thanks! Your Zelle payment is waiting for an administrator to confirm it arrived."
+                    : "Your payment is processing.")}
                 {status === "CANCELLED" && "Your membership is not active."}
               </span>
             </div>
@@ -119,7 +147,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
             )}
 
             <div className="mt-6 flex flex-wrap gap-3">
-              {!autopay && member.membership_status !== "inactive" && (
+              {showCardPay && (
                 <form action="/api/stripe/checkout" method="post">
                   <SubmitButton size="lg" pendingText="Opening secure checkout…">
                     <CreditCard className="h-5 w-5" aria-hidden />
@@ -127,7 +155,13 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                   </SubmitButton>
                 </form>
               )}
-              {member.stripe_customer_id && (
+              {zelleOn && zellePeriod && status !== "PAID" && status !== "PENDING" && (
+                <a href="#zelle" className={buttonClass(showCardPay ? "secondary" : "primary", "lg")}>
+                  <Send className="h-5 w-5" aria-hidden />
+                  Pay {fee} with Zelle
+                </a>
+              )}
+              {stripeOn && member.stripe_customer_id && (
                 <form action="/api/stripe/portal" method="post">
                   <SubmitButton variant="secondary" size="lg" pendingText="Opening…">
                     Manage payment method
@@ -135,7 +169,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                 </form>
               )}
             </div>
-            {!autopay && member.membership_status !== "inactive" && (
+            {canPay && !stripeOn && !zelleOn && status !== "PAID" && (
+              <p className="mt-4 text-sm text-stone-600">Please pay your dues to a club administrator (see contact details below).</p>
+            )}
+            {showCardPay && (
               <p className="mt-3 text-xs text-stone-500">
                 Secure checkout by Stripe. Your card is charged {fee} today and automatically each month. Cancel anytime.
               </p>
@@ -144,14 +181,29 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
         </div>
       </Card>
 
+      {zelleOn && zellePeriod && (
+        <ZelleCard
+          fee={fee}
+          recipientName={settings.zelle_recipient_name}
+          contact={settings.zelle_contact!}
+          memberName={member.full_name}
+          periods={openPeriods.map((p) => ({ key: periodKey(p), label: periodLabel(p) }))}
+          defaultPeriod={periodKey(zellePeriod)}
+        />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-3">
         <InfoTile icon={<CalendarClock className="h-5 w-5" />} label="Next payment due" value={formatDate(row?.nextDueDate ?? null)} />
         <InfoTile icon={<Receipt className="h-5 w-5" />} label="Total paid" value={formatMoney(totalPaid, settings.currency)} />
-        <InfoTile
-          icon={<CreditCard className="h-5 w-5" />}
-          label="Auto-pay"
-          value={autopay ? (member.cancel_at_period_end ? "Ends this period" : "On") : "Off"}
-        />
+        {stripeOn ? (
+          <InfoTile
+            icon={<CreditCard className="h-5 w-5" />}
+            label="Auto-pay"
+            value={autopay ? (member.cancel_at_period_end ? "Ends this period" : "On") : "Off"}
+          />
+        ) : (
+          <InfoTile icon={<CreditCard className="h-5 w-5" />} label="Pay with" value={settings.zelle_contact ? "Zelle" : "An administrator"} />
+        )}
       </div>
 
       <Card>
@@ -173,7 +225,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
               <dd className="mt-1 font-medium">{fee}</dd>
             </div>
           </dl>
-          {autopay && !member.cancel_at_period_end && (
+          {stripeOn && autopay && !member.cancel_at_period_end && (
             <form action="/api/stripe/cancel" method="post" className="mt-6 border-t border-stone-100 pt-4">
               <SubmitButton
                 variant="ghost"

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { hasLiveSubscription } from "@/lib/billing";
 import { getCurrentMember, getCurrentUser } from "@/lib/auth";
-import { siteUrl, stripePriceId } from "@/lib/env";
+import { siteUrl, stripeEnabled, stripePriceId } from "@/lib/env";
 import { getSettings } from "@/lib/settings";
 import { getStripe } from "@/lib/stripe/client";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /** Start a Stripe Checkout session for the signed-in member's $20/month subscription. */
 export async function POST() {
   const base = siteUrl();
+  if (!stripeEnabled()) return NextResponse.redirect(`${base}/dashboard?error=no-stripe`, 303);
   const user = await getCurrentUser();
   if (!user) return NextResponse.redirect(`${base}/login`, 303);
 
