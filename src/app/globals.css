@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --color-brand-50: #fff8eb;
+  --color-brand-100: #feeac7;
+  --color-brand-200: #fdd28a;
+  --color-brand-300: #fcb54d;
+  --color-brand-400: #fb9b24;
+  --color-brand-500: #f5780b;
+  --color-brand-600: #d95706;
+  --color-brand-700: #b43a09;
+  --color-brand-800: #922d0e;
+  --color-brand-900: #78270f;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--color-stone-900); /* matches the app header when scrolling past the top */
+}
+
+body {
+  background: var(--color-stone-50);
+  color: var(--color-stone-900);
+}
+
+/* Visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
