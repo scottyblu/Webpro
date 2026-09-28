@@ -181,6 +181,17 @@ export default async function SetupCheckPage() {
     <main className="mx-auto min-h-dvh max-w-2xl bg-stone-50 px-4 pb-12 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
       <Logo />
       <h1 className="mt-6 text-2xl font-bold">Setup check</h1>
+      {process.env.BUILD_TIME && (
+        <p className="mt-1 text-sm text-stone-500">
+          This version was deployed{" "}
+          {new Intl.DateTimeFormat("en-US", {
+            dateStyle: "medium",
+            timeStyle: "short",
+            timeZone: "America/New_York",
+          }).format(new Date(process.env.BUILD_TIME))}{" "}
+          (Eastern).
+        </p>
+      )}
       <p className={`mt-1 font-medium ${problems ? "text-red-700" : "text-emerald-700"}`}>
         {problems ? `${problems} problem${problems === 1 ? "" : "s"} to fix` : "Everything required is set up."}
       </p>
