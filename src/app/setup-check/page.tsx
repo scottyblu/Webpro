@@ -164,7 +164,7 @@ export default async function SetupCheckPage() {
             <li key={c.label} className="flex gap-3 px-4 py-3">
               <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${color[c.status]}`} aria-hidden />
               <div className="min-w-0">
-                <p className="font-semibold text-stone-900">{c.label}</p>
+                <p className="break-all font-semibold text-stone-900">{c.label}</p>
                 <p className="break-words text-sm text-stone-600">{c.detail}</p>
               </div>
             </li>
