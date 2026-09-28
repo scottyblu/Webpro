@@ -23,7 +23,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     >
       {error && (
         <Alert tone="error" className="mb-4">
-          That sign-in link is invalid or has expired. Please try again.
+          That link didn&apos;t work. It may have expired, already been used, or been opened in a different browser.
+          If you were confirming your email, try signing in below. If it says your email isn&apos;t confirmed, tap
+          &quot;Resend confirmation email&quot;.
         </Alert>
       )}
       <LoginForm next={next} />

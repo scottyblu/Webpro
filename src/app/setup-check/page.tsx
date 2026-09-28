@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { emailConfigured } from "@/lib/notifications";
+import { verifyEmailLogin } from "@/lib/notifications/providers/email";
 import { normalizeKey, normalizeSupabaseUrl } from "@/lib/supabase/config";
 
 export const metadata: Metadata = { title: "Setup check", robots: { index: false } };
@@ -80,6 +81,16 @@ export default async function SetupCheckPage() {
           ? "Reachable with the anon key."
           : `Supabase answered ${res.status}: ${(await res.text()).slice(0, 160)}`,
       });
+      if (res.ok) {
+        const authSettings = (await res.json()) as { mailer_autoconfirm?: boolean };
+        checks.push({
+          label: "Email verification required",
+          status: authSettings.mailer_autoconfirm ? "bad" : "ok",
+          detail: authSettings.mailer_autoconfirm
+            ? "OFF: new members can get in without confirming their email. In Supabase: Authentication → Sign In / Providers → Email → turn ON \"Confirm email\" → Save."
+            : "On: new members must tap the link in their email before they can sign in.",
+        });
+      }
     } catch (err) {
       checks.push({ label: "Supabase sign-up / login service", status: "bad", detail: `Could not reach ${url}: ${String(err)}` });
     }
@@ -111,6 +122,17 @@ export default async function SetupCheckPage() {
             status: "zelle_contact" in row ? "ok" : "bad",
             detail: "zelle_contact" in row ? "Installed." : "Run supabase/migrations/0002_zelle_payments.sql in the SQL Editor.",
           });
+          const version = await fetch(`${url}/rest/v1/rpc/tbc_schema_version`, {
+            method: "POST",
+            headers: { apikey: service, Authorization: `Bearer ${service}`, "Content-Type": "application/json" },
+            body: "{}",
+            cache: "no-store",
+          });
+          checks.push({
+            label: "Verified members only (SQL file 0004)",
+            status: version.ok ? "ok" : "bad",
+            detail: version.ok ? "Installed." : "Run supabase/migrations/0004_verified_members_only.sql in the SQL Editor.",
+          });
           checks.push({
             label: "Email alerts (SQL file 0003)",
             status: "notification_emails" in row ? "ok" : "bad",
@@ -130,11 +152,16 @@ export default async function SetupCheckPage() {
     status: !siteUrl ? "warn" : siteUrl.endsWith("/") ? "warn" : "ok",
     detail: !siteUrl ? "Not set (links in emails may point to the wrong address)." : siteUrl.endsWith("/") ? `${siteUrl}: remove the "/" at the end.` : siteUrl,
   });
-  checks.push({
-    label: "Email (Gmail)",
-    status: emailConfigured() ? "ok" : "warn",
-    detail: emailConfigured() ? `Configured (${emailConfigured()}).` : "Not set: GMAIL_ADDRESS and GMAIL_APP_PASSWORD. The app works, but sends no emails.",
-  });
+  if (emailConfigured()) {
+    const login = await verifyEmailLogin();
+    checks.push({ label: "Email (Gmail)", status: login.ok ? "ok" : "bad", detail: login.detail });
+  } else {
+    checks.push({
+      label: "Email (Gmail)",
+      status: "warn",
+      detail: "Not set: GMAIL_ADDRESS and GMAIL_APP_PASSWORD. The app works, but sends no emails.",
+    });
+  }
   checks.push({
     label: "CRON_SECRET",
     status: process.env.CRON_SECRET ? "ok" : "warn",

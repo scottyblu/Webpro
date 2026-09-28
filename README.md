@@ -30,7 +30,7 @@ A membership-dues app for a private club. Members pay **$20/month** by **Zelle**
 ## 1. Supabase setup
 
 1. Go to <https://supabase.com/dashboard> → **New project**. Pick a name (e.g. `breakfast-club`), a strong database password, and the region closest to you. Wait for it to finish provisioning.
-2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. Then do the same with [`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql) and [`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql). (See [section 2](#2-database-sql).)
+2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. Then do the same with [`0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql), [`0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql) and [`0004_verified_members_only.sql`](supabase/migrations/0004_verified_members_only.sql). (See [section 2](#2-database-sql).)
 3. **Copy your keys**: **Project Settings** (gear icon) →
    - **Data API** → *Project URL* → this is `NEXT_PUBLIC_SUPABASE_URL`
    - **API Keys** → the *anon / public* key (or a *publishable* key, `sb_publishable_…`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -40,7 +40,7 @@ A membership-dues app for a private club. Members pay **$20/month** by **Zelle**
    - **Redirect URLs** → add both:
      - `http://localhost:3000/**`
      - `https://YOUR-DOMAIN/**` (add once you know your production domain)
-5. **Email confirmation**: **Authentication → Sign In / Providers → Email** → make sure **Confirm email** is **ON** (keeps people from registering with someone else’s email).
+5. **Email confirmation (required)**: **Authentication → Sign In / Providers → Email** → turn **Confirm email** **ON** → **Save**. Without it, people can use the app without proving they own their email. While you're there, set **Minimum password length** to `10` and **Password requirements** to *Lowercase, uppercase letters, digits and symbols* (the app enforces the same rules). `/setup-check` shows a red ✗ if Confirm email is off.
 6. **Email templates** (required for invitations; recommended for all): **Authentication → Emails → Templates**. In each template below, replace the link (`{{ .ConfirmationURL }}`) with the one shown:
 
    | Template | Link to use |
@@ -54,7 +54,13 @@ A membership-dues app for a private club. Members pay **$20/month** by **Zelle**
    <h2>You're invited to The Breakfast Club</h2>
    <p><a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=invite&next=/reset-password">Accept the invitation and choose a password</a></p>
    ```
-7. **Production email (recommended)**: Supabase’s built-in email sender is limited to a few emails per hour. Before inviting real members, set up your own SMTP under **Authentication → Emails → SMTP Settings** (Resend, Postmark, SendGrid, Amazon SES, Gmail Workspace, etc.).
+7. **Send sign-up emails from your Gmail (recommended)**: by default Supabase sends confirmation and password-reset emails from its own address, limited to a few per hour. To send them from the club Gmail instead: **Authentication → Emails → SMTP Settings** → turn on **Enable custom SMTP** and enter:
+   - Sender email: your club Gmail (same as `GMAIL_ADDRESS`)
+   - Sender name: `The Breakfast Club`
+   - Host: `smtp.gmail.com` · Port: `465`
+   - Username: your club Gmail · Password: the 16-letter Gmail app password (same as `GMAIL_APP_PASSWORD`)
+
+   Then **Save**. Under **Authentication → Rate Limits**, you can raise "emails per hour" (for example to 30).
 
 ## 2. Database SQL
 
@@ -63,6 +69,7 @@ The complete schema is in two files. Run them **in order** in the Supabase SQL E
 1. **[`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql)**: all tables, security and triggers
 2. **[`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql)**: Zelle settings, plus a rule that a member can report only one Zelle payment per month while it waits for confirmation
 3. **[`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql)**: the admin “Notification emails” list
+4. **[`supabase/migrations/0004_verified_members_only.sql`](supabase/migrations/0004_verified_members_only.sql)**: people only become members after confirming their email (unconfirmed sign-ups never appear in the members list)
 
 Together they create:
 
@@ -81,7 +88,8 @@ Key protections built into the database:
 - **One paid payment per member per month**: partial unique index on `(member_id, payment_year, payment_month) WHERE payment_status = 'paid'`.
 - **Permanent history**: deleting a member sets `payments.member_id` to `NULL` and keeps the payment (with the member’s name) — revenue reports stay correct. Deactivating never touches payments.
 - **Row Level Security** on every table: members can read only their own member row and payments; admins (via `is_admin()`) can read everything; the browser can’t write anything directly — all writes go through server code that checks authorization first.
-- **Automatic account linking**: a trigger on `auth.users` creates a member record when someone registers, or links their login to an existing member the admin already added with the same email.
+- **Automatic account linking**: once someone confirms their email, a trigger on `auth.users` creates their member record, or links their login to an existing member the admin already added with the same email. Unconfirmed sign-ups never become members.
+- **One account per email**: sign-up is refused when the mailbox already has an account (Gmail addresses are compared ignoring dots and "+tags"). Passwords need 10+ characters with upper- and lowercase letters, a number and a symbol.
 
 Amounts are stored in cents (`2000` = $20.00) to avoid rounding errors.
 
