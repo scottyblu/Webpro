@@ -5,6 +5,7 @@ import { Send } from "lucide-react";
 import { reportZellePayment } from "@/app/actions/payments";
 import { FormMessage } from "@/components/ui/alert";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
+import { CopyButton } from "@/components/ui/copy-button";
 import { Field, Input, Select } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
 
@@ -27,6 +28,7 @@ export function ZelleCard({
   const [state, action] = useActionState(reportZellePayment, {});
   const [period, setPeriod] = useState(defaultPeriod);
   const periodName = periods.find((p) => p.key === period)?.label ?? "";
+  const memo = `Breakfast Club – ${periodName} – ${memberName}`;
 
   return (
     <Card>
@@ -38,9 +40,12 @@ export function ZelleCard({
             <Step n={1} />
             <div className="min-w-0 flex-1">
               <p className="font-medium text-stone-900">Open Zelle in your bank&apos;s app and send {fee} to:</p>
-              <div className="mt-2 rounded-lg bg-stone-100 px-4 py-3">
-                {recipientName && <p className="font-semibold text-stone-900">{recipientName}</p>}
-                <p className="select-all break-all font-mono text-base text-stone-900">{contact}</p>
+              <div className="mt-2 flex items-center gap-3 rounded-lg bg-stone-100 px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  {recipientName && <p className="font-semibold text-stone-900">{recipientName}</p>}
+                  <p className="select-all break-all font-mono text-base text-stone-900">{contact}</p>
+                </div>
+                <CopyButton text={contact} />
               </div>
             </div>
           </li>
@@ -48,9 +53,10 @@ export function ZelleCard({
             <Step n={2} />
             <div className="min-w-0 flex-1">
               <p className="font-medium text-stone-900">In the memo, write:</p>
-              <p className="mt-2 select-all rounded-lg bg-stone-100 px-4 py-3 font-mono text-stone-900">
-                Breakfast Club – {periodName} – {memberName}
-              </p>
+              <div className="mt-2 flex items-center gap-3 rounded-lg bg-stone-100 px-4 py-3">
+                <p className="min-w-0 flex-1 select-all font-mono text-stone-900">{memo}</p>
+                <CopyButton text={memo} />
+              </div>
             </div>
           </li>
           <li className="flex gap-3">
