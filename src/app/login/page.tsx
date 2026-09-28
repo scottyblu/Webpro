@@ -6,8 +6,12 @@ import { Alert } from "@/components/ui/alert";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string; error?: string }> }) {
-  const { next, error } = await searchParams;
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; error?: string; confirmed?: string }>;
+}) {
+  const { next, error, confirmed } = await searchParams;
   return (
     <AuthShell
       title="Welcome back"
@@ -21,11 +25,21 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         </>
       }
     >
-      {error && (
+      {confirmed && (
+        <Alert tone="success" className="mb-4">
+          Your email is confirmed! Sign in below with your email and password.
+        </Alert>
+      )}
+      {error === "expired" && (
         <Alert tone="error" className="mb-4">
-          That link didn&apos;t work. It may have expired, already been used, or been opened in a different browser.
-          If you were confirming your email, try signing in below. If it says your email isn&apos;t confirmed, tap
-          &quot;Resend confirmation email&quot;.
+          That link has expired or was already used. Sign in below. If it says your email isn&apos;t confirmed, tap
+          &quot;Resend confirmation email&quot; for a new link.
+        </Alert>
+      )}
+      {error && error !== "expired" && (
+        <Alert tone="error" className="mb-4">
+          That link didn&apos;t work. Try signing in below. If it says your email isn&apos;t confirmed, tap &quot;Resend
+          confirmation email&quot;.
         </Alert>
       )}
       <LoginForm next={next} />
