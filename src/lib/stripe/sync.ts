@@ -3,7 +3,7 @@ import type Stripe from "stripe";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import { siteUrl } from "@/lib/env";
 import { formatMoney } from "@/lib/format";
-import { notify } from "@/lib/notifications";
+import { notify, notifyAdmins } from "@/lib/notifications";
 import { addMonths, periodKey, periodLabel, periodOfDate, type Period } from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -174,6 +174,12 @@ export async function recordInvoice(invoice: Stripe.Invoice, status: PaymentStat
     await sendPaymentNotice(member, "payment_confirmation", amount, invoice, settings, period);
   } else if (status === "failed") {
     await sendPaymentNotice(member, "failed_payment_notice", amount, invoice, settings, period);
+    await notifyAdmins(
+      "admin_payment_failed",
+      `Card payment failed: ${member.full_name} (${periodLabel(period)})`,
+      `${member.full_name}'s ${formatMoney(amount, invoice.currency)} card payment for ${periodLabel(period)} failed. Stripe will retry automatically, and the member has been asked to update their card.\n\nMember profile: ${siteUrl()}/member-management/${member.id}`,
+      `admin_payment_failed:${invoice.id}`,
+    );
   }
 }
 

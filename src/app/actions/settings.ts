@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { siteUrl } from "@/lib/env";
+import { notifyAdmins } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ActionState } from "@/lib/types";
 
@@ -24,13 +26,24 @@ const settingsSchema = z.object({
   admin_phone: z.string().trim().max(30),
   zelle_recipient_name: z.string().trim().max(120),
   zelle_contact: z.string().trim().max(120),
+  notification_emails: z.string().max(2000),
 });
+
+/** Split "a@x.com, b@y.com\nc@z.com" into a clean, de-duplicated list. */
+function parseEmailList(raw: string): { emails: string[]; invalid: string | null } {
+  const emails = [...new Set(raw.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const invalid = emails.find((e) => !z.string().email().safeParse(e).success) ?? null;
+  return { emails, invalid };
+}
 
 export async function updateSettings(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireAdmin();
   const parsed = settingsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]!.message };
   const d = parsed.data;
+  const { emails, invalid } = parseEmailList(d.notification_emails);
+  if (invalid) return { error: `"${invalid}" isn't a valid email address.` };
+  if (emails.length > 10) return { error: "Please list at most 10 notification emails." };
 
   const db = createAdminClient();
   const { error } = await db
@@ -46,12 +59,29 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
       admin_phone: d.admin_phone || null,
       zelle_recipient_name: d.zelle_recipient_name || null,
       zelle_contact: d.zelle_contact || null,
+      notification_emails: emails,
     })
     .eq("id", 1);
   if (error) return { error: `Could not save settings: ${error.message}` };
 
   revalidatePath("/", "layout");
   return { ok: true, message: "Settings saved." };
+}
+
+/** Send a test email to every notification address, so the admin can confirm email works. */
+export async function sendTestEmail(): Promise<ActionState> {
+  await requireAdmin();
+  const result = await notifyAdmins(
+    "admin_test",
+    "Test email from The Breakfast Club app",
+    `It works! This address will receive:\n\n  • an alert when a member says they sent a Zelle payment\n  • a list of who still owes, a few days after the due date\n  • a summary at the start of each month\n\nDashboard: ${siteUrl()}/admin`,
+    "admin_test",
+    { force: true },
+  );
+  if (result.error && result.sent === 0) return { error: result.error };
+  if (result.recipients === 0) return { error: "Add at least one notification email above and click Save settings first." };
+  if (result.failed > 0) return { error: `Sent ${result.sent}, failed ${result.failed}: ${result.error}` };
+  return { ok: true, message: `Test email sent to ${result.sent} address${result.sent === 1 ? "" : "es"}. Check the inbox (and spam folder).` };
 }
 
 /** Grant admin access to someone who already has an account (they must register first). */

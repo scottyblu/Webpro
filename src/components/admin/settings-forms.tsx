@@ -1,9 +1,9 @@
 "use client";
 
 import { useActionState } from "react";
-import { addAdmin, updateSettings } from "@/app/actions/settings";
+import { addAdmin, sendTestEmail, updateSettings } from "@/app/actions/settings";
 import { FormMessage } from "@/components/ui/alert";
-import { Field, Input, Select } from "@/components/ui/form";
+import { Field, Input, Select, Textarea } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { ClubSettings } from "@/lib/types";
 
@@ -68,6 +68,26 @@ export function SettingsForm({ settings }: { settings: ClubSettings }) {
         </Field>
       </fieldset>
 
+      <fieldset className="grid gap-4">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">Notification emails</legend>
+        <Field
+          label="Send admin alerts to"
+          htmlFor="notification_emails"
+          hint="One email per line (up to 10). These addresses get an alert when a member reports a Zelle payment, a list of who still owes a few days after the due date, and a summary at the start of each month."
+        >
+          <Textarea
+            id="notification_emails"
+            name="notification_emails"
+            rows={3}
+            defaultValue={(settings.notification_emails ?? []).join("\n")}
+            placeholder={"you@example.com\ntreasurer@example.com"}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </Field>
+      </fieldset>
+
       <fieldset className="grid gap-4 sm:grid-cols-2">
         <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">Admin contact (shown to members)</legend>
         <Field label="Name" htmlFor="admin_name">
@@ -99,6 +119,24 @@ export function AddAdminForm() {
         <SubmitButton pendingText="Adding…">Add administrator</SubmitButton>
       </div>
       <p className="text-xs text-stone-500">They must create an account first (Register page), then you can add them here.</p>
+    </form>
+  );
+}
+
+export function TestEmailButton({ configured }: { configured: boolean }) {
+  const [state, action] = useActionState(sendTestEmail, {});
+  return (
+    <form action={action} className="space-y-3">
+      <FormMessage state={state} />
+      {!configured && (
+        <p className="text-sm text-stone-600">
+          Email isn&apos;t connected yet. Add <code className="rounded bg-stone-100 px-1">GMAIL_ADDRESS</code> and{" "}
+          <code className="rounded bg-stone-100 px-1">GMAIL_APP_PASSWORD</code> in Vercel, then redeploy.
+        </p>
+      )}
+      <SubmitButton variant="secondary" pendingText="Sending…">
+        Send test email
+      </SubmitButton>
     </form>
   );
 }

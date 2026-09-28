@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { removeAdmin } from "@/app/actions/settings";
-import { AddAdminForm, SettingsForm } from "@/components/admin/settings-forms";
+import { AddAdminForm, SettingsForm, TestEmailButton } from "@/components/admin/settings-forms";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireAdmin } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { emailConfigured } from "@/lib/notifications";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 import type { AdminUser } from "@/lib/types";
@@ -26,7 +27,7 @@ export default async function SettingsPage() {
     { name: "Zelle payments", on: !!settings.zelle_contact },
     { name: "Stripe card payments (optional)", on: !!process.env.STRIPE_SECRET_KEY },
     { name: "Stripe webhooks (optional)", on: !!process.env.STRIPE_WEBHOOK_SECRET },
-    { name: "Email notifications (Resend)", on: !!process.env.RESEND_API_KEY && !!process.env.NOTIFICATIONS_FROM_EMAIL },
+    { name: emailConfigured() === "resend" ? "Email (Resend)" : "Email (Gmail)", on: emailConfigured() !== null },
     { name: "SMS notifications (Twilio)", on: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN && !!process.env.TWILIO_FROM_NUMBER },
     { name: "Scheduled reminders (CRON_SECRET)", on: !!process.env.CRON_SECRET },
   ];
@@ -67,6 +68,16 @@ export default async function SettingsPage() {
             </ul>
             <CardBody className="border-t border-stone-100">
               <AddAdminForm />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Email"
+              description={`Alerts go to: ${settings.notification_emails?.length ? settings.notification_emails.join(", ") : "no one yet (add addresses under Notification emails)"}`}
+            />
+            <CardBody>
+              <TestEmailButton configured={emailConfigured() !== null} />
             </CardBody>
           </Card>
 
