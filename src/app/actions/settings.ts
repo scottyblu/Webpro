@@ -22,6 +22,8 @@ const settingsSchema = z.object({
   admin_name: z.string().trim().max(120),
   admin_email: z.union([z.literal(""), z.string().trim().email("Enter a valid admin email")]),
   admin_phone: z.string().trim().max(30),
+  zelle_recipient_name: z.string().trim().max(120),
+  zelle_contact: z.string().trim().max(120),
 });
 
 export async function updateSettings(_prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -42,6 +44,8 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
       admin_name: d.admin_name || null,
       admin_email: d.admin_email || null,
       admin_phone: d.admin_phone || null,
+      zelle_recipient_name: d.zelle_recipient_name || null,
+      zelle_contact: d.zelle_contact || null,
     })
     .eq("id", 1);
   if (error) return { error: `Could not save settings: ${error.message}` };

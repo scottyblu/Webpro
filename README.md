@@ -1,6 +1,8 @@
 # THE BREAKFAST CLUB
 
-A membership-dues app for a private club. Members pay **$20/month** through Stripe; the administrator opens the dashboard and immediately sees **who paid this month and who still owes**.
+A membership-dues app for a private club. Members pay **$20/month** by **Zelle** (and optionally by card through Stripe); the administrator opens the dashboard and immediately sees **who paid this month and who still owes**.
+
+> **Zelle only?** Skip [section 3](#3-stripe-setup) and leave the Stripe variables empty. After you're signed in as admin, open **Settings → Zelle** and enter the Zelle name and email/phone members should pay. Members see a **Pay with Zelle** card, tap **"I've sent my Zelle payment"**, and show as **PENDING** until you tap **Received** on your dashboard.
 
 - **Members**: register, log in, see PAID / UNPAID for the current month, pay with Stripe Checkout (auto-renews monthly), manage their card in the Stripe Customer Portal, cancel, see payment history and next due date, edit their profile.
 - **Admins**: dashboard with Total Members / Paid / Unpaid / Collected / Expected, searchable + filterable payment table, any-month view, manual payments (Cash, Zelle, Venmo, Cash App, Check, Other) with notes, add / edit / deactivate / reactivate / delete members, member profiles with full payment history, reports with charts, CSV export, settings.
@@ -28,7 +30,7 @@ A membership-dues app for a private club. Members pay **$20/month** through Stri
 ## 1. Supabase setup
 
 1. Go to <https://supabase.com/dashboard> → **New project**. Pick a name (e.g. `breakfast-club`), a strong database password, and the region closest to you. Wait for it to finish provisioning.
-2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. (See [section 2](#2-database-sql).)
+2. **Create the database**: left sidebar → **SQL Editor** → **New query** → paste the entire contents of [`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql) → **Run**. You should see “Success. No rows returned”. Then do the same with [`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql). (See [section 2](#2-database-sql).)
 3. **Copy your keys**: **Project Settings** (gear icon) →
    - **Data API** → *Project URL* → this is `NEXT_PUBLIC_SUPABASE_URL`
    - **API Keys** → the *anon / public* key (or a *publishable* key, `sb_publishable_…`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -56,7 +58,12 @@ A membership-dues app for a private club. Members pay **$20/month** through Stri
 
 ## 2. Database SQL
 
-The complete schema is in **[`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql)**. Run it once in the Supabase SQL Editor (it is safe to re-run). It creates:
+The complete schema is in two files. Run them **in order** in the Supabase SQL Editor (both are safe to re-run):
+
+1. **[`supabase/migrations/0001_initial_schema.sql`](supabase/migrations/0001_initial_schema.sql)**: all tables, security and triggers
+2. **[`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql)**: Zelle settings, plus a rule that a member can report only one Zelle payment per month while it waits for confirmation
+
+Together they create:
 
 | Table | Purpose |
 | --- | --- |
@@ -78,6 +85,8 @@ Key protections built into the database:
 Amounts are stored in cents (`2000` = $20.00) to avoid rounding errors.
 
 ## 3. Stripe setup
+
+**Optional.** Stripe adds automatic monthly card payments. If you only use Zelle (and cash), skip this whole section and leave the Stripe environment variables empty: the card buttons disappear automatically. You can add Stripe any time later.
 
 Do everything in **Test mode** first (toggle at the top of the Stripe Dashboard).
 
@@ -118,8 +127,8 @@ Copy [`.env.example`](.env.example) to `.env.local` and fill in:
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase → Project Settings → Data API → Project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Supabase → Project Settings → API Keys → anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | Supabase → Project Settings → API Keys → service_role / secret key (**server only**) |
-| `STRIPE_SECRET_KEY` | yes | Stripe → Developers → API keys → Secret key |
-| `STRIPE_WEBHOOK_SECRET` | yes | Stripe → Developers → Webhooks → endpoint → Signing secret (or `stripe listen` output locally) |
+| `STRIPE_SECRET_KEY` | only for card payments | Stripe → Developers → API keys → Secret key |
+| `STRIPE_WEBHOOK_SECRET` | only for card payments | Stripe → Developers → Webhooks → endpoint → Signing secret (or `stripe listen` output locally) |
 | `STRIPE_PRICE_ID` | no | Stripe → Product catalog → your monthly price (`price_…`). Leave empty to use the fee from Settings |
 | `CRON_SECRET` | yes for reminders | Any long random string: `openssl rand -hex 32` |
 | `RESEND_API_KEY`, `NOTIFICATIONS_FROM_EMAIL` | no | <https://resend.com> → API Keys; the from-address must be on a domain verified in Resend |
@@ -209,7 +218,9 @@ Notes:
 
 *Total Members* counts everyone billable that month (not cancelled). *Expected* = Total Members × monthly fee. *Collected* = sum of paid payments. *Still owed* = unpaid members × fee. Months are never overwritten — each is computed from the permanent payment history, so you can pick any past month on the **Payments** page.
 
-**Stripe flow.** *Pay* → Stripe Checkout (subscription, $20/month) → Stripe charges the card → `invoice.paid` webhook → a `paid` payment row for that month. Each renewal creates the next month’s row automatically. A failed renewal records a `failed` row, marks the member PAST DUE and sends a failed-payment notice; a later successful retry flips it to paid. If a member already paid a month another way (cash), a Stripe payment for that month is applied to the next unpaid month instead of being lost.
+**Zelle flow.** Settings → Zelle holds the recipient name and Zelle email/phone. Members see those details, a ready-made memo (“Breakfast Club – September 2026 – Mike Jones”) and an **“I’ve sent my Zelle payment”** button, which records a PENDING Zelle payment for the month. The admin dashboard lists these under **Waiting for confirmation**. **Received** makes it PAID (and sends a confirmation); **Not received** voids it (kept in history) and the member can report again. Zelle has no way for apps to see payments, so this confirmation step is what keeps the records accurate. Reminder messages include the Zelle details.
+
+**Stripe flow (optional).** *Pay* → Stripe Checkout (subscription, $20/month) → Stripe charges the card → `invoice.paid` webhook → a `paid` payment row for that month. Each renewal creates the next month’s row automatically. A failed renewal records a `failed` row, marks the member PAST DUE and sends a failed-payment notice; a later successful retry flips it to paid. If a member already paid a month another way (cash), a Stripe payment for that month is applied to the next unpaid month instead of being lost.
 
 **Next payment date.** Auto-pay members: the next Stripe charge date. Everyone else: the due day (Settings) of the earliest unpaid month.
 

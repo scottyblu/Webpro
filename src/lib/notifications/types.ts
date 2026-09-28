@@ -20,6 +20,8 @@ export interface NotificationContext {
   dueDate?: string; // formatted date
   paymentMethod?: string;
   dashboardUrl: string;
+  /** How to pay besides the app, e.g. "Zelle $20 to John Smith (dues@example.com)". */
+  payInstructions?: string;
 }
 
 export interface RenderedMessage {

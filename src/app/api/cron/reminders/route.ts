@@ -59,6 +59,9 @@ export async function GET(request: NextRequest) {
         periodLabel: periodLabel(period),
         dueDate: formatDate(due),
         dashboardUrl: `${siteUrl()}/dashboard`,
+        payInstructions: settings.zelle_contact
+          ? `Pay with Zelle to ${settings.zelle_recipient_name ? `${settings.zelle_recipient_name} ` : ""}(${settings.zelle_contact}), then tap "I've sent my Zelle payment" in the app.`
+          : undefined,
       },
       `${type}:${member.id}:${periodKey(period)}`,
     );

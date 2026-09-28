@@ -20,6 +20,9 @@ export const supabaseAnonKey = () =>
 export const supabaseServiceRoleKey = () =>
   required("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+/** Stripe is optional: card payments are offered only when a secret key is configured. */
+export const stripeEnabled = () => !!process.env.STRIPE_SECRET_KEY;
+
 export const stripeSecretKey = () => required("STRIPE_SECRET_KEY", process.env.STRIPE_SECRET_KEY);
 export const stripeWebhookSecret = () => required("STRIPE_WEBHOOK_SECRET", process.env.STRIPE_WEBHOOK_SECRET);
 /** Optional. When set, Checkout uses this Stripe Price instead of the fee from Settings. */

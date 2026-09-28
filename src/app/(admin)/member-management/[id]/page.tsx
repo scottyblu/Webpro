@@ -9,7 +9,7 @@ import {
   reactivateMember,
   updateMember,
 } from "@/app/actions/members";
-import { recordManualPayment, voidManualPayment } from "@/app/actions/payments";
+import { confirmPendingPayment, recordManualPayment, rejectPendingPayment, voidManualPayment } from "@/app/actions/payments";
 import { ManualPaymentForm } from "@/components/admin/manual-payment-form";
 import { MemberForm } from "@/components/admin/member-form";
 import { Alert } from "@/components/ui/alert";
@@ -179,6 +179,26 @@ export default async function MemberProfilePage({
                   </div>
                   <div className="flex items-center gap-2">
                     <PaymentStatusBadge status={p.payment_status} />
+                    {p.payment_method !== "stripe" && p.payment_status === "pending" && (
+                      <>
+                        <form action={confirmPendingPayment.bind(null, p.id)}>
+                          <SubmitButton variant="success" size="sm" className="text-xs" pendingText="…">
+                            Confirm
+                          </SubmitButton>
+                        </form>
+                        <form action={rejectPendingPayment.bind(null, p.id)}>
+                          <SubmitButton
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs text-stone-500"
+                            pendingText="…"
+                            confirmMessage="Mark this payment as not received? It stays in the history as voided."
+                          >
+                            Reject
+                          </SubmitButton>
+                        </form>
+                      </>
+                    )}
                     {p.payment_method !== "stripe" && p.payment_status === "paid" && (
                       <form action={voidManualPayment.bind(null, p.id)}>
                         <SubmitButton
@@ -245,7 +265,11 @@ export default async function MemberProfilePage({
                 </>
               ) : (
                 <p className="text-stone-500">
-                  Not subscribed. {member.user_id ? "They can start auto-pay from their member dashboard." : "This member hasn't created a login yet."}
+                  {!process.env.STRIPE_SECRET_KEY
+                    ? "Stripe card payments are not set up (optional)."
+                    : member.user_id
+                      ? "Not subscribed. They can start auto-pay from their member dashboard."
+                      : "Not subscribed. This member hasn't created a login yet."}
                 </p>
               )}
             </CardBody>

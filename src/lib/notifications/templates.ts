@@ -17,7 +17,7 @@ export function renderNotification(
     case "upcoming_payment_reminder":
       return {
         subject: `${ctx.clubName}: membership payment due ${ctx.dueDate ?? "soon"}`,
-        text: `Hi ${first},\n\nFriendly reminder: your ${ctx.amount} membership payment${ctx.periodLabel ? ` for ${ctx.periodLabel}` : ""} is due ${ctx.dueDate ?? "soon"}.\n\nPay online: ${ctx.dashboardUrl}\n\n— ${ctx.clubName}`,
+        text: `Hi ${first},\n\nFriendly reminder: your ${ctx.amount} membership payment${ctx.periodLabel ? ` for ${ctx.periodLabel}` : ""} is due ${ctx.dueDate ?? "soon"}.\n\n${ctx.payInstructions ? `${ctx.payInstructions}\n` : ""}Pay or view your membership: ${ctx.dashboardUrl}\n\n— ${ctx.clubName}`,
         sms: `${ctx.clubName}: Reminder — your ${ctx.amount} dues are due ${ctx.dueDate ?? "soon"}. Pay: ${ctx.dashboardUrl}`,
       };
     case "failed_payment_notice":
@@ -29,7 +29,7 @@ export function renderNotification(
     case "past_due_reminder":
       return {
         subject: `${ctx.clubName}: membership payment past due`,
-        text: `Hi ${first},\n\nOur records show your ${ctx.amount} membership payment${ctx.periodLabel ? ` for ${ctx.periodLabel}` : ""} (due ${ctx.dueDate ?? "earlier this month"}) hasn't been received yet.\n\nPay online: ${ctx.dashboardUrl}\n\nIf you've already paid another way, please let an administrator know.\n\n— ${ctx.clubName}`,
+        text: `Hi ${first},\n\nOur records show your ${ctx.amount} membership payment${ctx.periodLabel ? ` for ${ctx.periodLabel}` : ""} (due ${ctx.dueDate ?? "earlier this month"}) hasn't been received yet.\n\n${ctx.payInstructions ? `${ctx.payInstructions}\n` : ""}Pay or view your membership: ${ctx.dashboardUrl}\n\nIf you've already paid another way, please let an administrator know.\n\n— ${ctx.clubName}`,
         sms: `${ctx.clubName}: Your ${ctx.amount} dues${ctx.periodLabel ? ` for ${ctx.periodLabel}` : ""} are past due. Pay: ${ctx.dashboardUrl}`,
       };
   }

@@ -3,12 +3,13 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { MonthPicker } from "@/components/admin/month-picker";
 import { PaymentTable } from "@/components/admin/payment-table";
+import { PendingPayments } from "@/components/admin/pending-payments";
 import { SummaryCards } from "@/components/admin/summary-cards";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/lib/auth";
-import { getAvailablePeriods, getMonthOverview } from "@/lib/data";
+import { getAvailablePeriods, getMonthOverview, getPendingReports } from "@/lib/data";
 import { formatMoney } from "@/lib/format";
 import { parsePeriodKey, periodKey, periodLabel } from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
@@ -21,9 +22,10 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const { month, status } = await searchParams;
   const supabase = await createClient();
   const settings = await getSettings(supabase);
-  const [overview, periods] = await Promise.all([
+  const [overview, periods, pending] = await Promise.all([
     getMonthOverview(supabase, parsePeriodKey(month)),
     getAvailablePeriods(supabase, settings),
+    getPendingReports(supabase),
   ]);
   const { period, rows, summary } = overview;
   const key = periodKey(period);
@@ -47,6 +49,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         }
       />
 
+      {pending.length > 0 && (
+        <div className="mb-6">
+          <PendingPayments payments={pending} timeZone={settings.timezone} />
+        </div>
+      )}
       <SummaryCards summary={summary} currency={overview.settings.currency} />
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
