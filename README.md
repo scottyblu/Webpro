@@ -19,8 +19,9 @@ A membership-dues app for a private club. Members pay **$20/month** through Stri
 5. [Run locally](#5-run-locally)
 6. [Deploy](#6-deploy-to-vercel)
 7. [Create the first administrator](#7-create-the-first-administrator)
-8. [How it works](#how-it-works)
-9. [Project structure](#project-structure)
+8. [Install it as a phone app](#8-install-it-as-a-phone-app)
+9. [How it works](#how-it-works)
+10. [Project structure](#project-structure)
 
 ---
 
@@ -178,6 +179,21 @@ Any Node.js host that runs Next.js works (Netlify, Render, Railway, a VPS with `
 3. Sign out and sign back in — you’ll land on `/admin`.
 4. Add more administrators later from **Settings → Administrators** (they must register first).
 
+## 8. Install it as a phone app
+
+The Breakfast Club is an installable app (a Progressive Web App). Once it’s deployed, members and admins add it to their home screen. It gets its own icon, opens full-screen with no browser bar, and uses bottom tabs like a normal app. There’s no app store and no fee, and every update you deploy reaches everyone right away.
+
+- **iPhone / iPad**: open your app’s address in **Safari** → tap **Share** → **Add to Home Screen** → **Add**.
+- **Android**: open the address in **Chrome** → tap **Install app** on the banner (or ⋮ menu → **Install app** / **Add to Home screen**).
+- **Computer (Chrome / Edge)**: click the install icon at the right of the address bar.
+
+The app shows a “Get the Breakfast Club app” card with these steps until it’s installed (or dismissed). Tip: send members your app address in a text with the line “Open in Safari/Chrome and tap Add to Home Screen.”
+
+Notes:
+- The app must be served over **https** to be installable (Vercel does this automatically).
+- On iPhone, the installed app keeps its own login, separate from Safari, so members sign in once inside the app. Links in emails (confirm account, reset password) open in Safari. After using one, open the app and sign in.
+- Payment and member data are never stored on the phone. The app always loads live data, and shows a friendly “You’re offline” screen with no connection.
+
 ---
 
 ## How it works
@@ -208,6 +224,7 @@ src/
   middleware.ts                    session refresh + server-side route protection
   app/
     page.tsx                       landing page (redirects signed-in users)
+    manifest.ts                    app manifest (name, icons, full-screen)
     login/ register/ forgot-password/ reset-password/
     auth/callback/route.ts         email link handler (confirm, invite, reset)
     auth/signout/route.ts
@@ -233,6 +250,10 @@ src/
     stripe/                        Stripe client + idempotent sync functions
     supabase/                      server, browser, service-role and middleware clients
     notifications/                 notification types, templates, providers
+public/
+  sw.js                            service worker (installable app + offline screen)
+  offline.html                     offline screen
+  icons/                           app icons
 supabase/
   migrations/0001_initial_schema.sql
   create_first_admin.sql

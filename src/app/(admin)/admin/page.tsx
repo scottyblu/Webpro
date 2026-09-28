@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, UserPlus } from "lucide-react";
 import { PaymentTable } from "@/components/admin/payment-table";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SummaryCards } from "@/components/admin/summary-cards";
 import { BarChart, PaidProgress } from "@/components/ui/bar-chart";
 import { buttonClass } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export default async function AdminDashboard() {
         }
       />
 
+      <InstallPrompt className="mb-4 lg:hidden" />
       <SummaryCards summary={summary} currency={settings.currency} />
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CalendarCheck, CreditCard, ShieldCheck } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { buttonClass } from "@/components/ui/button";
 import { getAdminRecord, getCurrentUser } from "@/lib/auth";
 
@@ -11,7 +12,7 @@ export default async function HomePage() {
 
   return (
     <main className="flex min-h-dvh flex-col bg-stone-900 text-white">
-      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 sm:px-6">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 pb-5 pt-[calc(env(safe-area-inset-top)+1.25rem)] sm:px-6">
         <Logo light />
         <Link href="/login" className="text-sm font-semibold text-stone-300 hover:text-white">
           Sign in
@@ -31,6 +32,7 @@ export default async function HomePage() {
             Member sign in
           </Link>
         </div>
+        <InstallPrompt tone="dark" className="mt-8 max-w-md" />
         <div className="mt-16 grid gap-4 sm:grid-cols-3">
           {[
             { icon: CreditCard, title: "Secure payments", text: "Card payments handled by Stripe. We never store your card." },

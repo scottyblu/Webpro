@@ -15,7 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-dvh">
       <AdminSidebar email={user.email ?? ""} clubName={settings.club_name} />
       <div className="lg:pl-64">
-        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">{children}</main>
+        <main className="mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:py-10">{children}</main>
       </div>
     </div>
   );

@@ -16,6 +16,8 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  background: var(--color-stone-900); /* matches the app header when scrolling past the top */
 }
 
 body {

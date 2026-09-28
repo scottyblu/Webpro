@@ -8,7 +8,7 @@ export function AuthShell({ title, subtitle, children, footer }: {
   footer?: React.ReactNode;
 }) {
   return (
-    <main className="flex min-h-dvh flex-col items-center justify-center bg-stone-100 px-4 py-10">
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-stone-100 px-4 pb-10 pt-[calc(env(safe-area-inset-top)+2.5rem)]">
       <Link href="/" className="mb-8">
         <Logo />
       </Link>
