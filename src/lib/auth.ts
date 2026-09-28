@@ -4,12 +4,16 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { AdminUser, Member } from "@/lib/types";
 
-/** The verified signed-in user (validated with Supabase Auth, not just read from the cookie). */
+/**
+ * The verified signed-in user (validated with Supabase Auth, not just read from the cookie).
+ * Accounts that haven't confirmed their email are treated as signed out.
+ */
 export const getCurrentUser = cache(async () => {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user?.email_confirmed_at) return null;
   return user;
 });
 

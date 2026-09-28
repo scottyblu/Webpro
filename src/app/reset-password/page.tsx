@@ -6,10 +6,10 @@ import { requireUser } from "@/lib/auth";
 export const metadata: Metadata = { title: "Choose a password" };
 
 export default async function ResetPasswordPage() {
-  await requireUser();
+  const user = await requireUser();
   return (
     <AuthShell title="Choose a new password">
-      <ResetPasswordForm />
+      <ResetPasswordForm email={user.email} />
     </AuthShell>
   );
 }

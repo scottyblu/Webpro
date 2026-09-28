@@ -73,4 +73,6 @@ export interface ActionState {
   ok?: boolean;
   error?: string;
   message?: string;
+  /** Set when the person needs to confirm this email address (offers "Resend email"). */
+  unconfirmedEmail?: string;
 }

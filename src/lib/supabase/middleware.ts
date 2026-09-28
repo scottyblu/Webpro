@@ -38,8 +38,10 @@ export async function updateSession(request: NextRequest) {
   });
 
   const {
-    data: { user },
+    data: { user: sessionUser },
   } = await supabase.auth.getUser();
+  // Accounts that haven't confirmed their email can't use the app.
+  const user = sessionUser?.email_confirmed_at ? sessionUser : null;
 
   const { pathname } = request.nextUrl;
   const isAdminPath = matches(pathname, ADMIN_PREFIXES);

@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { requestPasswordReset, updatePassword } from "@/app/actions/auth";
 import { FormMessage } from "@/components/ui/alert";
 import { Field, Input } from "@/components/ui/form";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { NewPasswordField } from "./password-field";
 
 export function ForgotPasswordForm() {
   const [state, action] = useActionState(requestPasswordReset, {});
@@ -13,7 +14,13 @@ export function ForgotPasswordForm() {
     <form action={action} className="space-y-4">
       <FormMessage state={state} />
       <Field label="Email" htmlFor="email">
-        <Input id="email" name="email" type="email" autoComplete="email" required />
+        <Input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+        />
       </Field>
       <SubmitButton className="w-full" size="lg" pendingText="Sending…">
         Send reset link
@@ -22,16 +29,23 @@ export function ForgotPasswordForm() {
   );
 }
 
-export function ResetPasswordForm() {
+export function ResetPasswordForm({ email }: { email?: string }) {
   const [state, action] = useActionState(updatePassword, {});
+  const [confirm, setConfirm] = useState("");
   return (
     <form action={action} className="space-y-4">
       <FormMessage state={state} />
-      <Field label="New password" htmlFor="password" hint="At least 8 characters">
-        <Input id="password" name="password" type="password" autoComplete="new-password" minLength={8} required />
-      </Field>
+      <NewPasswordField label="New password" email={email} />
       <Field label="Confirm new password" htmlFor="confirm">
-        <Input id="confirm" name="confirm" type="password" autoComplete="new-password" minLength={8} required />
+        <Input
+          id="confirm"
+          name="confirm"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+        />
       </Field>
       <SubmitButton className="w-full" size="lg" pendingText="Saving…">
         Save password
