@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Shown on /setup-check so you can tell when a redeploy has gone live.
+  env: { BUILD_TIME: new Date().toISOString() },
   async headers() {
     return [
       {
