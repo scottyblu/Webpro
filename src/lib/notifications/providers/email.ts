@@ -107,5 +107,6 @@ export const emailProvider: NotificationProvider = {
   async send(recipient, message) {
     if (!recipient.email) throw new Error("Member has no email address");
     await sendEmail(recipient.email, message.subject, message.text);
+    return recipient.email;
   },
 };

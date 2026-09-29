@@ -51,7 +51,10 @@ export default async function ReportsPage() {
       </div>
 
       <Card className="mt-6">
-        <CardHeader title="Monthly revenue" description={`Last 12 months · ${money(yearCollected)} collected · gray = expected`} />
+        <CardHeader
+          title="Monthly revenue"
+          description={`Money received each month (a $240 yearly payment counts in the month it was paid) · last 12 months: ${money(yearCollected)} · gray = expected dues`}
+        />
         <CardBody>
           <BarChart
             height={220}
@@ -76,7 +79,7 @@ export default async function ReportsPage() {
                 <th className="px-3 py-3 text-right">Paid</th>
                 <th className="px-3 py-3 text-right">Unpaid</th>
                 <th className="px-3 py-3 text-right">Paid %</th>
-                <th className="px-3 py-3 text-right">Collected</th>
+                <th className="px-3 py-3 text-right">Revenue</th>
                 <th className="px-3 py-3 text-right">Expected</th>
                 <th className="px-4 py-3 text-right sm:px-6">Owed</th>
               </tr>

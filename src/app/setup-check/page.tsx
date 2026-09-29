@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { emailConfigured } from "@/lib/notifications";
+import { emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
 import { verifyEmailLogin } from "@/lib/notifications/providers/email";
 import { normalizeKey, normalizeSupabaseUrl } from "@/lib/supabase/config";
 
@@ -139,6 +139,15 @@ export default async function SetupCheckPage() {
             detail:
               "notification_emails" in row ? "Installed." : "Run supabase/migrations/0003_admin_notifications.sql in the SQL Editor.",
           });
+          const schemaVersion = version.ok ? Number(await version.json()) : 0;
+          checks.push({
+            label: "Prepayments, $20 minimum & reminders (SQL file 0005)",
+            status: schemaVersion >= 5 ? "ok" : "bad",
+            detail:
+              schemaVersion >= 5
+                ? "Installed."
+                : "Run supabase/migrations/0005_allocations_and_reminders.sql in the SQL Editor.",
+          });
         }
       }
     } catch (err) {
@@ -166,6 +175,18 @@ export default async function SetupCheckPage() {
     label: "CRON_SECRET",
     status: process.env.CRON_SECRET ? "ok" : "warn",
     detail: process.env.CRON_SECRET ? "Set (daily reminders can run)." : "Not set: reminders and summaries won't run.",
+  });
+  checks.push({
+    label: "Text messages (optional)",
+    status: "ok",
+    detail: smsConfigured() ? "Twilio connected." : "Off: add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER to send texts.",
+  });
+  checks.push({
+    label: "App notifications (optional)",
+    status: "ok",
+    detail: pushConfigured()
+      ? "VAPID keys set."
+      : "Off: create keys in Admin → Settings → App notifications, then add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY.",
   });
   checks.push({
     label: "Stripe (optional)",

@@ -5,6 +5,7 @@ import { MemberForm } from "@/components/admin/member-form";
 import { Card, CardBody } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/lib/auth";
+import { formatMoney } from "@/lib/format";
 import { zonedDateString } from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
@@ -28,7 +29,18 @@ export default async function NewMemberPage() {
             action={createMember}
             submitLabel="Add member"
             showInvite
-            initial={{ full_name: "", email: "", phone: "", joined_date: zonedDateString(new Date(), settings.timezone), notes: "" }}
+            clubDues={formatMoney(settings.monthly_fee_cents, settings.currency)}
+            clubDueDay={settings.payment_due_day}
+            initial={{
+              full_name: "",
+              email: "",
+              phone: "",
+              joined_date: zonedDateString(new Date(), settings.timezone),
+              notes: "",
+              notification_pref: "all",
+              dues: "",
+              due_day: "",
+            }}
           />
         </CardBody>
       </Card>

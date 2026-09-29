@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
+import { MIN_PAYMENT_CENTS } from "@/lib/constants";
 import { siteUrl } from "@/lib/env";
 import { notifyAdmins } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -10,7 +11,7 @@ import type { ActionState } from "@/lib/types";
 
 const settingsSchema = z.object({
   club_name: z.string().trim().min(1, "Enter the club name").max(100),
-  monthly_fee: z.coerce.number().min(1, "Fee must be at least $1").max(10000),
+  monthly_fee: z.coerce.number().min(MIN_PAYMENT_CENTS / 100, "The monthly fee must be at least $20.").max(10000),
   payment_due_day: z.coerce.number().int().min(1).max(28, "Due day must be between 1 and 28"),
   currency: z.literal("usd"),
   timezone: z.string().refine((tz) => {
@@ -66,6 +67,59 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
 
   revalidatePath("/", "layout");
   return { ok: true, message: "Settings saved." };
+}
+
+/** "3, 1, 0" → [3, 1, 0] (unique, sorted, 0–60). */
+function parseDays(raw: string, label: string): number[] | { error: string } {
+  const parts = raw.split(/[\s,;]+/).filter(Boolean);
+  const days = parts.map(Number);
+  if (days.some((d) => !Number.isInteger(d) || d < 0 || d > 60)) return { error: `${label}: use whole numbers of days between 0 and 60, separated by commas.` };
+  return [...new Set(days)].sort((a, b) => b - a).slice(0, 10);
+}
+
+const reminderSchema = z.object({
+  reminder_message: z.string().trim().max(500),
+  overdue_message: z.string().trim().max(500),
+});
+
+/** Settings → Payment reminders. */
+export async function updateReminderSettings(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireAdmin();
+  const before = parseDays(String(formData.get("reminder_days_before") ?? ""), "Days before");
+  if (!Array.isArray(before)) return before;
+  const after = parseDays(String(formData.get("overdue_days_after") ?? ""), "Days after");
+  if (!Array.isArray(after)) return after;
+  if (after.includes(0)) return { error: "Overdue reminders start at least 1 day after the due date." };
+  const text = reminderSchema.safeParse({
+    reminder_message: formData.get("reminder_message") ?? "",
+    overdue_message: formData.get("overdue_message") ?? "",
+  });
+  if (!text.success) return { error: "Messages can be up to 500 characters." };
+
+  const on = (name: string) => formData.get(name) === "on";
+  const db = createAdminClient();
+  const { error } = await db
+    .from("club_settings")
+    .update({
+      reminders_enabled: on("reminders_enabled"),
+      reminder_days_before: before.length ? before : [3, 1, 0],
+      overdue_enabled: on("overdue_enabled"),
+      overdue_days_after: after.length ? after : [1, 3, 7],
+      sms_enabled: on("sms_enabled"),
+      email_enabled: on("email_enabled"),
+      push_enabled: on("push_enabled"),
+      reminder_message: text.data.reminder_message || null,
+      overdue_message: text.data.overdue_message || null,
+    })
+    .eq("id", 1);
+  if (error) {
+    if (/reminder|overdue|sms_enabled|push_enabled|email_enabled/.test(error.message)) {
+      return { error: "The database needs updating: run supabase/migrations/0005_allocations_and_reminders.sql in the Supabase SQL Editor." };
+    }
+    return { error: `Could not save: ${error.message}` };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, message: "Payment reminder settings saved." };
 }
 
 /** Send a test email to every notification address, so the admin can confirm email works. */

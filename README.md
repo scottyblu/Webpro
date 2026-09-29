@@ -70,6 +70,7 @@ The complete schema is in two files. Run them **in order** in the Supabase SQL E
 2. **[`supabase/migrations/0002_zelle_payments.sql`](supabase/migrations/0002_zelle_payments.sql)**: Zelle settings, plus a rule that a member can report only one Zelle payment per month while it waits for confirmation
 3. **[`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql)**: the admin “Notification emails” list
 4. **[`supabase/migrations/0004_verified_members_only.sql`](supabase/migrations/0004_verified_members_only.sql)**: people only become members after confirming their email (unconfirmed sign-ups never appear in the members list)
+5. **[`supabase/migrations/0005_allocations_and_reminders.sql`](supabase/migrations/0005_allocations_and_reminders.sql)**: multi-month / yearly / custom payments (`payment_allocations`), the $20 minimum, void / restore / delete / wipe functions, member reminder preferences, reminder settings and app (push) notification subscriptions. Existing payments are kept and converted.
 
 Together they create:
 
@@ -85,7 +86,8 @@ Together they create:
 Key protections built into the database:
 
 - **No duplicate Stripe payments**: `payments.stripe_payment_id` (the Stripe invoice id) is `UNIQUE`, and processed webhook event ids are stored in `stripe_events`.
-- **One paid payment per member per month**: partial unique index on `(member_id, payment_year, payment_month) WHERE payment_status = 'paid'`.
+- **A month can only be paid once**: `payment_allocations` is unique on `(member_id, period_year, period_month)`. One payment (e.g. $240 for a year) has one allocation row per month it covers, each a full month of dues — there are no partial months.
+- **$20 minimum**: every new payment is checked in the app (browser and server) and again by the database.
 - **Permanent history**: deleting a member sets `payments.member_id` to `NULL` and keeps the payment (with the member’s name) — revenue reports stay correct. Deactivating never touches payments.
 - **Row Level Security** on every table: members can read only their own member row and payments; admins (via `is_admin()`) can read everything; the browser can’t write anything directly — all writes go through server code that checks authorization first.
 - **Automatic account linking**: once someone confirms their email, a trigger on `auth.users` creates their member record, or links their login to an existing member the admin already added with the same email. Unconfirmed sign-ups never become members.
@@ -142,7 +144,9 @@ Copy [`.env.example`](.env.example) to `.env.local` and fill in:
 | `CRON_SECRET` | yes for reminders | Any long random string: `openssl rand -hex 32` |
 | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | recommended | The Gmail account that sends all emails, plus its app password (see [Email setup](#email-setup-gmail)) |
 | `RESEND_API_KEY`, `NOTIFICATIONS_FROM_EMAIL` | no | Alternative to Gmail: <https://resend.com> → API Keys; the from-address must be on a domain verified in Resend |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | no | <https://console.twilio.com> → Account Info; a Twilio phone number |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | no (text reminders) | <https://console.twilio.com> → Account Info; a Twilio phone number (Secret) |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | no (app notifications) | Admin → Settings → App notifications → **Create app notification keys**. Public key = Config, private key = Secret |
+| `VAPID_SUBJECT` | no | Contact for push services, e.g. `mailto:you@example.com` (defaults to `GMAIL_ADDRESS`) |
 
 No API key is hardcoded anywhere. The admin **Settings** page shows which integrations are connected.
 
@@ -235,16 +239,25 @@ Notes:
 
 ## How it works
 
-**Monthly status.** Every payment row belongs to a month (`payment_month`, `payment_year`) in the club’s time zone. For any month, each member is:
+**Money vs. months covered.** A payment is money received (one row, even for $240). Its `payment_allocations` rows say which months it covers — one full month of dues each. Totals are never stored; every screen recalculates them from these records, so adding, voiding, restoring or deleting a payment updates everything immediately.
+
+- *Amount Collected / monthly revenue* = valid (not voided) payments **received** that month (cash basis). A $240 yearly payment made in September is $240 of September revenue.
+- *Paid through* = the last month of the unbroken run of covered months.
+- Payment options: **One month** ($20), **Multiple months**, **Full year** ($240, 12 months, status PAID AHEAD) or **Custom amount** (at least $20). Whole months only: $50 covers 2 months and the $10 left is recorded as a donation, unallocated credit or other — never a partly-paid month. Amounts under $20 are rejected in the browser, on the server and in the database.
+- **Void** keeps the record (marked Voided) but removes its money and its months; **Restore** undoes that; **Delete** removes it permanently; **Wipe History** (Payments page) deletes every payment but keeps members.
+
+For any month, each member is:
 
 | Status | Meaning |
 | --- | --- |
-| **PAID** (green) | a `paid` payment exists for that month (Stripe or manual) |
-| **PENDING** (yellow) | a payment is awaiting confirmation (e.g. bank authentication) |
-| **UNPAID** (red) | no payment for that month; “Card failed” is shown if the last Stripe attempt failed |
-| **CANCELLED** (gray) | the member was cancelled/deactivated and didn’t pay that month |
+| **PAID** (green) | that month is covered by a valid payment |
+| **PAID AHEAD** (teal) | this month and the next are covered (prepaid) |
+| **PENDING** (yellow) | the member reported a Zelle payment that isn't confirmed yet |
+| **UNPAID** (red) | not covered, due date not reached yet |
+| **OVERDUE** (dark red) | not covered and the due date has passed |
+| **CANCELLED** (gray) | the member was cancelled/deactivated |
 
-*Total Members* counts everyone billable that month (not cancelled). *Expected* = Total Members × monthly fee. *Collected* = sum of paid payments. *Still owed* = unpaid members × fee. Months are never overwritten — each is computed from the permanent payment history, so you can pick any past month on the **Payments** page.
+**Payment reminders.** Settings → Payment reminders: automatic reminders N days before the due date (default 3, 1 and 0), optional overdue reminders N days after (default 1, 3, 7), which channels to use (text, email, app) and custom messages. Each member picks their preference (Text / Email / App / Text + Email / All / None) on their profile. A daily job (`/api/cron/reminders`) sends a reminder only for months that are still unpaid, so paying stops them and voiding a payment restarts them. Each reminder is sent once per member + month + type + day. Admins can also tap **Send reminder** on a member's profile. Everything sent is listed under **Settings → Notification history** (`/admin/notifications`) and on each member's profile. App notifications use the standard Web Push protocol (no extra service); members turn them on from their dashboard after installing the app.
 
 **Zelle flow.** Settings → Zelle holds the recipient name and Zelle email/phone. Members see those details, a ready-made memo (“Breakfast Club – September 2026 – Mike Jones”) and an **“I’ve sent my Zelle payment”** button, which records a PENDING Zelle payment for the month. The admin dashboard lists these under **Waiting for confirmation**. **Received** makes it PAID (and sends a confirmation); **Not received** voids it (kept in history) and the member can report again. Zelle has no way for apps to see payments, so this confirmation step is what keeps the records accurate. Reminder messages include the Zelle details.
 

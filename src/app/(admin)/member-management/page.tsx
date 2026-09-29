@@ -7,7 +7,7 @@ import { buttonClass } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/lib/auth";
-import { fetchAllMembers, getMemberTotals, getMonthOverview } from "@/lib/data";
+import { getLedger, memberTotals, monthOverviewFrom } from "@/lib/data";
 import { periodLabel } from "@/lib/periods";
 import { hasLiveSubscription } from "@/lib/billing";
 import { createClient } from "@/lib/supabase/server";
@@ -18,11 +18,10 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   await requireAdmin();
   const { deleted } = await searchParams;
   const supabase = await createClient();
-  const [members, totals, overview] = await Promise.all([
-    fetchAllMembers(supabase),
-    getMemberTotals(supabase),
-    getMonthOverview(supabase),
-  ]);
+  const ledger = await getLedger(supabase);
+  const { members } = ledger;
+  const overview = monthOverviewFrom(ledger, ledger.current);
+  const totals = memberTotals(ledger);
   const statusById = new Map(overview.rows.map((r) => [r.memberId, r.status]));
 
   const rows: DirectoryRow[] = members.map((m) => ({

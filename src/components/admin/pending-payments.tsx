@@ -5,8 +5,17 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
 import { formatDate, formatMoney } from "@/lib/format";
-import { periodLabel } from "@/lib/periods";
+import { addMonths, periodLabel } from "@/lib/periods";
 import type { Payment } from "@/lib/types";
+
+/** "for October 2026" · "for Oct 2026 – Sep 2027 (12 months)" · "(donation / extra)" */
+export function pendingCovers(p: Payment): string {
+  const start = { year: p.payment_year, month: p.payment_month };
+  if (p.months_count <= 0) return "(donation / extra)";
+  const extra = p.extra_cents > 0 ? ` + ${formatMoney(p.extra_cents, p.currency)} extra` : "";
+  if (p.months_count === 1) return `for ${periodLabel(start)}${extra}`;
+  return `for ${periodLabel(start)} – ${periodLabel(addMonths(start, p.months_count - 1))} (${p.months_count} months)${extra}`;
+}
 
 /** Member-reported payments (e.g. "I've sent my Zelle payment") waiting for the admin to check the bank. */
 export function PendingPayments({ payments, timeZone }: { payments: Payment[]; timeZone: string }) {
@@ -30,8 +39,8 @@ export function PendingPayments({ payments, timeZone }: { payments: Payment[]; t
                   p.member_name
                 )}{" "}
                 <span className="font-normal text-stone-600">
-                  — {formatMoney(p.amount_cents, p.currency)} {PAYMENT_METHOD_LABELS[p.payment_method]} for{" "}
-                  {periodLabel({ year: p.payment_year, month: p.payment_month })}
+                  — {formatMoney(p.amount_cents, p.currency)} {PAYMENT_METHOD_LABELS[p.payment_method]}{" "}
+                  {pendingCovers(p)}
                 </span>
               </p>
               <p className="text-xs text-stone-500">

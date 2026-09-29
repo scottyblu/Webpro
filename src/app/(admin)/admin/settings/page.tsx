@@ -1,13 +1,20 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { removeAdmin } from "@/app/actions/settings";
-import { AddAdminForm, SettingsForm, TestEmailButton } from "@/components/admin/settings-forms";
+import {
+  AddAdminForm,
+  PushKeysGenerator,
+  ReminderSettingsForm,
+  SettingsForm,
+  TestEmailButton,
+} from "@/components/admin/settings-forms";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireAdmin } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
-import { emailConfigured } from "@/lib/notifications";
+import { emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 import type { AdminUser } from "@/lib/types";
@@ -22,13 +29,15 @@ export default async function SettingsPage() {
     supabase.from("admin_users").select("*").order("created_at"),
   ]);
   const admins = (data ?? []) as AdminUser[];
+  const services = { sms: smsConfigured(), email: emailConfigured() !== null, push: pushConfigured() };
 
   const integrations = [
     { name: "Zelle payments", on: !!settings.zelle_contact },
     { name: "Stripe card payments (optional)", on: !!process.env.STRIPE_SECRET_KEY },
     { name: "Stripe webhooks (optional)", on: !!process.env.STRIPE_WEBHOOK_SECRET },
     { name: emailConfigured() === "resend" ? "Email (Resend)" : "Email (Gmail)", on: emailConfigured() !== null },
-    { name: "SMS notifications (Twilio)", on: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN && !!process.env.TWILIO_FROM_NUMBER },
+    { name: "Text messages (Twilio)", on: services.sms },
+    { name: "App notifications (VAPID keys)", on: services.push },
     { name: "Scheduled reminders (CRON_SECRET)", on: !!process.env.CRON_SECRET },
   ];
 
@@ -36,12 +45,30 @@ export default async function SettingsPage() {
     <>
       <PageHeader title="Settings" description="Club details, dues and administrators." />
       <div className="grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader title="Club settings" />
-          <CardBody className="py-6">
-            <SettingsForm settings={settings} />
-          </CardBody>
-        </Card>
+        <div className="space-y-6 xl:col-span-2">
+          <Card>
+            <CardHeader title="Club settings" />
+            <CardBody className="py-6">
+              <SettingsForm settings={settings} />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <div id="reminders" className="scroll-mt-20" />
+            <CardHeader
+              title="Payment reminders"
+              description="Automatic reminders to members who haven't paid yet. See what was sent under Notifications."
+              action={
+                <Link href="/admin/notifications" className="text-sm font-semibold text-brand-600 hover:text-brand-700">
+                  Notification history →
+                </Link>
+              }
+            />
+            <CardBody className="py-6">
+              <ReminderSettingsForm settings={settings} services={services} />
+            </CardBody>
+          </Card>
+        </div>
 
         <div className="space-y-6">
           <Card>
@@ -78,6 +105,13 @@ export default async function SettingsPage() {
             />
             <CardBody>
               <TestEmailButton configured={emailConfigured() !== null} />
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader title="App notifications" description="Payment reminders on members' phones (for members who installed the app)." />
+            <CardBody>
+              <PushKeysGenerator configured={services.push} />
             </CardBody>
           </Card>
 

@@ -1,18 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarClock, CreditCard, Receipt, Send } from "lucide-react";
+import { CreditCard, Send } from "lucide-react";
+import { PushToggle } from "@/components/member/push-toggle";
 import { ZelleCard } from "@/components/member/zelle-card";
+import { PaymentSummary } from "@/components/payments/payment-summary";
 import { Alert } from "@/components/ui/alert";
 import { MembershipBadge, PaymentStatusBadge, StatusBadge } from "@/components/ui/badge";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { getAdminRecord, getCurrentMember } from "@/lib/auth";
-import { buildMonthRows, hasLiveSubscription, paidPeriodKeys } from "@/lib/billing";
-import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import { buildCoverage, coverageFor, firstUnpaidPeriod, hasLiveSubscription, memberSummary } from "@/lib/billing";
+import { PAYMENT_CATEGORY_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/constants";
+import { coveredMonthsByPayment, getMemberWithPayments } from "@/lib/data";
 import { stripeEnabled } from "@/lib/env";
 import { formatDate, formatMoney } from "@/lib/format";
-import { addMonths, comparePeriods, currentPeriod, periodKey, periodLabel, periodOfDateString, periodRange } from "@/lib/periods";
+import { pushConfigured, vapidPublicKey } from "@/lib/notifications/providers/push";
+import {
+  addMonths,
+  comparePeriods,
+  periodKey,
+  periodLabel,
+  periodOfDateString,
+  periodRange,
+  periodShortLabel,
+  type Period,
+} from "@/lib/periods";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 import type { Payment } from "@/lib/types";
@@ -59,50 +72,38 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
 
   const supabase = await createClient();
   const settings = await getSettings(supabase);
-  const { data } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("member_id", member.id)
-    .order("payment_year", { ascending: false })
-    .order("payment_month", { ascending: false })
-    .order("payment_date", { ascending: false });
-  const payments = (data ?? []) as Payment[];
+  const result = await getMemberWithPayments(supabase, member.id);
+  const payments = (result?.payments ?? []).filter((p) => p.payment_status !== "void");
+  const allocations = result?.allocations ?? [];
+  const covered = coveredMonthsByPayment(allocations);
 
-  const period = currentPeriod(settings.timezone);
-  const [row] = buildMonthRows({
-    members: [member],
-    payments,
-    period,
-    settings,
-    futurePaidByMember: new Map([[member.id, paidPeriodKeys(payments)]]),
-  });
-  const status = row?.status ?? (member.membership_status === "active" ? "UNPAID" : "CANCELLED");
+  const summary = memberSummary({ member: result?.member ?? member, payments, allocations, settings });
+  const { row, status } = summary;
+  const period = summary.currentPeriod;
+  const cov = coverageFor(buildCoverage(allocations, payments), member.id);
   const autopay = hasLiveSubscription(member);
-  const fee = formatMoney(settings.monthly_fee_cents, settings.currency);
-  const totalPaid = payments.filter((p) => p.payment_status === "paid").reduce((s, p) => s + p.amount_cents, 0);
+  const fee = formatMoney(summary.duesCents, settings.currency);
   const firstName = member.full_name.split(" ")[0];
+  const isPaid = status === "PAID" || status === "PAID_AHEAD";
 
   const canPay = member.membership_status !== "inactive";
   const stripeOn = stripeEnabled();
   const showCardPay = stripeOn && canPay && !autopay;
   const zelleOn = !!settings.zelle_contact && canPay;
-  const pendingZelle = status === "PENDING" && payments.some(
-    (p) => p.payment_status === "pending" && p.payment_method !== "stripe" && p.payment_year === period.year && p.payment_month === period.month,
-  );
+  const pendingZelle = status === "PENDING" && payments.some((p) => p.payment_status === "pending" && p.payment_method !== "stripe");
 
-  // Months a Zelle payment can be reported for: not already paid or waiting for confirmation.
+  // Months a Zelle payment can start from: not already paid or waiting for confirmation,
+  // from 6 months back (or when they joined) to 2 years ahead.
   const joined = periodOfDateString(member.joined_date);
   const earliest = comparePeriods(joined, addMonths(period, -6)) > 0 ? joined : addMonths(period, -6);
-  const taken = new Set(
-    payments
-      .filter((p) => p.payment_status === "paid" || p.payment_status === "pending")
-      .map((p) => periodKey({ year: p.payment_year, month: p.payment_month })),
-  );
-  const openPeriods = periodRange(earliest, addMonths(period, 3))
+  const takenKeys = [...cov.paid.keys(), ...cov.pending.keys()];
+  const taken = new Set(takenKeys);
+  const openPeriods = periodRange(earliest, addMonths(period, 24))
     .reverse()
     .filter((p) => !taken.has(periodKey(p)));
-  const zellePeriod =
-    openPeriods.find((p) => comparePeriods(p, period) === 0) ?? openPeriods.find((p) => comparePeriods(p, period) < 0) ?? openPeriods[0];
+  const zellePeriod = firstUnpaidPeriod(member, cov, settings);
+  const zelleStart = openPeriods.find((p) => comparePeriods(p, zellePeriod) >= 0) ?? openPeriods[0];
+  const pushKey = pushConfigured() && settings.push_enabled ? vapidPublicKey() : null;
 
   return (
     <div className="space-y-6">
@@ -117,7 +118,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
       <Card className="overflow-hidden">
         <div
           className={
-            status === "PAID"
+            isPaid
               ? "bg-emerald-50"
               : status === "PENDING"
                 ? "bg-amber-50"
@@ -132,7 +133,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
               <StatusBadge status={status} size="lg" />
               <span className="text-stone-700">
                 {status === "PAID" && `You're paid up for ${periodLabel(period)}. Thank you!`}
-                {status === "UNPAID" && `Your ${fee} membership for ${periodLabel(period)} is due.`}
+                {status === "PAID_AHEAD" &&
+                  `You're paid ahead through ${summary.paidThrough ? periodLabel(summary.paidThrough) : "future months"}. Thank you!`}
+                {status === "UNPAID" && `Your ${fee} membership for ${periodLabel(period)} is due ${formatDate(row?.dueDate ?? null)}.`}
+                {status === "OVERDUE" && `Your ${fee} membership for ${periodLabel(period)} was due ${formatDate(row?.dueDate ?? null)}.`}
                 {status === "PENDING" &&
                   (pendingZelle
                     ? "Thanks! Your Zelle payment is waiting for an administrator to confirm it arrived."
@@ -155,10 +159,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                   </SubmitButton>
                 </form>
               )}
-              {zelleOn && zellePeriod && status !== "PAID" && status !== "PENDING" && (
-                <a href="#zelle" className={buttonClass(showCardPay ? "secondary" : "primary", "lg")}>
+              {zelleOn && zelleStart && (
+                <a href="#zelle" className={buttonClass(showCardPay || isPaid || status === "PENDING" ? "secondary" : "primary", "lg")}>
                   <Send className="h-5 w-5" aria-hidden />
-                  Pay {fee} with Zelle
+                  {isPaid || status === "PENDING" ? "Pay ahead with Zelle" : `Pay ${fee} with Zelle`}
                 </a>
               )}
               {stripeOn && member.stripe_customer_id && (
@@ -169,7 +173,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                 </form>
               )}
             </div>
-            {canPay && !stripeOn && !zelleOn && status !== "PAID" && (
+            {canPay && !stripeOn && !zelleOn && !isPaid && (
               <p className="mt-4 text-sm text-stone-600">Please pay your dues to a club administrator (see contact details below).</p>
             )}
             {showCardPay && (
@@ -181,30 +185,39 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
         </div>
       </Card>
 
-      {zelleOn && zellePeriod && (
+      {summary.owedCents > 0 && (
+        <Alert tone="error">
+          <strong>You owe {formatMoney(summary.owedCents, settings.currency)}</strong> for{" "}
+          {summary.owedMonths.map((p) => periodLabel(p)).join(", ")}. Payments are applied to the oldest unpaid month first.
+        </Alert>
+      )}
+
+      <PaymentSummary summary={summary} currency={settings.currency} timeZone={settings.timezone} />
+
+      {pushKey && <PushToggle publicKey={pushKey} />}
+
+      {zelleOn && zelleStart && (
         <ZelleCard
-          fee={fee}
+          duesCents={summary.duesCents}
+          currency={settings.currency}
           recipientName={settings.zelle_recipient_name}
           contact={settings.zelle_contact!}
           memberName={member.full_name}
           periods={openPeriods.map((p) => ({ key: periodKey(p), label: periodLabel(p) }))}
-          defaultPeriod={periodKey(zellePeriod)}
+          defaultPeriod={periodKey(zelleStart)}
+          takenKeys={takenKeys}
         />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <InfoTile icon={<CalendarClock className="h-5 w-5" />} label="Next payment due" value={formatDate(row?.nextDueDate ?? null)} />
-        <InfoTile icon={<Receipt className="h-5 w-5" />} label="Total paid" value={formatMoney(totalPaid, settings.currency)} />
-        {stripeOn ? (
+      {stripeOn && (
+        <div className="grid gap-4 sm:grid-cols-3">
           <InfoTile
             icon={<CreditCard className="h-5 w-5" />}
             label="Auto-pay"
             value={autopay ? (member.cancel_at_period_end ? "Ends this period" : "On") : "Off"}
           />
-        ) : (
-          <InfoTile icon={<CreditCard className="h-5 w-5" />} label="Pay with" value={settings.zelle_contact ? "Zelle" : "An administrator"} />
-        )}
-      </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader title="Membership" />
@@ -242,7 +255,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
       </Card>
 
       <Card>
-        <CardHeader title="Payment history" description="Every payment you've made, by month." />
+        <CardHeader title="Payment history" description="Every payment you've made and the months it covers." />
         {payments.length === 0 ? (
           <CardBody>
             <p className="py-6 text-center text-sm text-stone-500">No payments yet.</p>
@@ -252,9 +265,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
             {payments.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
                 <div className="min-w-0">
-                  <p className="font-medium text-stone-900">{periodLabel({ year: p.payment_year, month: p.payment_month })}</p>
+                  <p className="font-medium text-stone-900">{describePayment(p, covered.get(p.id))}</p>
                   <p className="text-xs text-stone-500">
                     {formatDate(p.payment_date, settings.timezone)} · {PAYMENT_METHOD_LABELS[p.payment_method]}
+                    {p.extra_cents > 0 && p.months_count > 0 && ` · ${formatMoney(p.extra_cents, p.currency)} extra`}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -284,6 +298,17 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
       )}
     </div>
   );
+}
+
+/** "October 2026" · "Oct 26 – Sep 27 (12 months)" · "Donation / extra contribution" */
+function describePayment(p: Payment, covered: Period[] | undefined): string {
+  const months =
+    covered && covered.length
+      ? covered
+      : Array.from({ length: p.months_count }, (_, i) => addMonths({ year: p.payment_year, month: p.payment_month }, i));
+  if (months.length === 0) return PAYMENT_CATEGORY_LABELS[p.category];
+  if (months.length === 1) return periodLabel(months[0]!);
+  return `${periodShortLabel(months[0]!)} – ${periodShortLabel(months[months.length - 1]!)} (${months.length} months)`;
 }
 
 function InfoTile({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

@@ -5,24 +5,40 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { hasLiveSubscription } from "@/lib/billing";
+import { MIN_PAYMENT_CENTS, MIN_PAYMENT_MESSAGE } from "@/lib/constants";
+import { normalizePhone } from "@/lib/phone";
 import { siteUrl } from "@/lib/env";
 import { getStripe } from "@/lib/stripe/client";
 import { syncSubscription } from "@/lib/stripe/sync";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ActionState, Member } from "@/lib/types";
 
-const ADMIN_PATHS = ["/admin", "/member-management", "/payment-management", "/reports"];
-function revalidateAdmin(memberId?: string) {
-  ADMIN_PATHS.forEach((p) => revalidatePath(p));
-  if (memberId) revalidatePath(`/member-management/${memberId}`);
+/** Member changes (dues, due day, status) affect totals and statuses on every page. */
+function revalidateAdmin() {
+  revalidatePath("/", "layout");
 }
 
 const memberSchema = z.object({
   full_name: z.string().trim().min(2, "Enter the member's full name").max(120),
   email: z.string().trim().toLowerCase().email("Enter a valid email address"),
-  phone: z.string().trim().max(30),
+  phone: z
+    .string()
+    .trim()
+    .max(30)
+    .refine((v) => v === "" || normalizePhone(v) !== null, "Enter a valid phone number (e.g. 555-123-4567)"),
   joined_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid join date"),
   notes: z.string().trim().max(2000),
+  notification_pref: z.enum(["all", "sms_email", "sms", "email", "push", "none"]).catch("all"),
+  // Blank = club amount. Otherwise at least $20 (partial payments are never allowed).
+  dues: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || (Number.isFinite(Number(v)) && Math.round(Number(v) * 100) >= MIN_PAYMENT_CENTS), MIN_PAYMENT_MESSAGE)
+    .refine((v) => v === "" || Number(v) <= 10000, "That monthly amount is too large."),
+  due_day: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || (/^\d+$/.test(v) && Number(v) >= 1 && Number(v) <= 28), "Due day must be between 1 and 28."),
 });
 
 function parseMember(formData: FormData) {
@@ -32,7 +48,26 @@ function parseMember(formData: FormData) {
     phone: formData.get("phone") ?? "",
     joined_date: formData.get("joined_date"),
     notes: formData.get("notes") ?? "",
+    notification_pref: formData.get("notification_pref") ?? "all",
+    dues: formData.get("dues") ?? "",
+    due_day: formData.get("due_day") ?? "",
   });
+}
+
+/** Columns added by SQL file 0005 (reminder preference, per-member amount and due day). */
+function billingColumns(data: z.infer<typeof memberSchema>) {
+  return {
+    notification_pref: data.notification_pref,
+    dues_cents: data.dues === "" ? null : Math.round(Number(data.dues) * 100),
+    due_day: data.due_day === "" ? null : Number(data.due_day),
+  };
+}
+
+function saveError(message: string): string {
+  if (/notification_pref|dues_cents|due_day/.test(message)) {
+    return "The database needs updating: run supabase/migrations/0005_allocations_and_reminders.sql in the Supabase SQL Editor.";
+  }
+  return message;
 }
 
 async function loadMember(id: string): Promise<Member | null> {
@@ -55,12 +90,13 @@ export async function createMember(_prev: ActionState, formData: FormData): Prom
       phone: parsed.data.phone || null,
       joined_date: parsed.data.joined_date,
       notes: parsed.data.notes || null,
+      ...billingColumns(parsed.data),
     })
     .select("id")
     .single();
   if (error) {
     if (error.code === "23505") return { error: "A member with that email already exists." };
-    return { error: `Could not add member: ${error.message}` };
+    return { error: `Could not add member: ${saveError(error.message)}` };
   }
 
   // Optionally email them an invite so they can log in and pay online.
@@ -93,11 +129,12 @@ export async function updateMember(memberId: string, _prev: ActionState, formDat
       phone: parsed.data.phone || null,
       joined_date: parsed.data.joined_date,
       notes: parsed.data.notes || null,
+      ...billingColumns(parsed.data),
     })
     .eq("id", memberId);
   if (error) {
     if (error.code === "23505") return { error: "Another member already uses that email." };
-    return { error: `Could not save: ${error.message}` };
+    return { error: `Could not save: ${saveError(error.message)}` };
   }
 
   if (member.stripe_customer_id) {
@@ -112,7 +149,7 @@ export async function updateMember(memberId: string, _prev: ActionState, formDat
     }
   }
 
-  revalidateAdmin(memberId);
+  revalidateAdmin();
   return { ok: true, message: "Member saved." };
 }
 
@@ -130,14 +167,14 @@ export async function deactivateMember(memberId: string): Promise<void> {
   await cancelStripeSubscription(member);
   const db = createAdminClient();
   await db.from("members").update({ membership_status: "inactive" }).eq("id", memberId);
-  revalidateAdmin(memberId);
+  revalidateAdmin();
 }
 
 export async function reactivateMember(memberId: string): Promise<void> {
   await requireAdmin();
   const db = createAdminClient();
   await db.from("members").update({ membership_status: "active" }).eq("id", memberId);
-  revalidateAdmin(memberId);
+  revalidateAdmin();
 }
 
 /** Cancel the member's Stripe subscription at the end of the paid period (member stays active until then). */
@@ -149,7 +186,7 @@ export async function cancelMemberSubscription(memberId: string): Promise<void> 
     cancel_at_period_end: true,
   });
   await syncSubscription(subscription);
-  revalidateAdmin(memberId);
+  revalidateAdmin();
 }
 
 /**
