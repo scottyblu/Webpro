@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentMember, requireAdmin } from "@/lib/auth";
 import { buildCoverage, coverageFor } from "@/lib/billing";
+import { getLedger, monthOverviewFrom } from "@/lib/data";
 import { formatDate } from "@/lib/format";
 import type { DeliveryChannel } from "@/lib/notifications";
 import { generateVapidKeys, pushConfigured } from "@/lib/notifications/providers/push";
@@ -57,6 +58,49 @@ export async function sendManualReminder(memberId: string, _prev: ActionState, f
       ...problems.map((r) => `${CHANNEL_NAMES[r.channel]} not sent: ${r.detail}`),
     ].join(" "),
   };
+}
+
+/**
+ * Admin: one tap to remind every member who hasn't paid this month (Unpaid or Overdue).
+ * Each member is reminded by their own preferred methods, about their oldest unpaid month.
+ * Members who reported a Zelle payment (Pending) are skipped. Tapping twice in a day
+ * doesn't send twice.
+ */
+export async function remindAllUnpaid(): Promise<ActionState> {
+  await requireAdmin();
+  const db = createAdminClient();
+  const ledger = await getLedger(db);
+  const { settings } = ledger;
+  const today = zonedDateString(new Date(), settings.timezone);
+  const { rows } = monthOverviewFrom(ledger, ledger.current);
+  const unpaid = rows.filter((r) => r.status === "UNPAID" || r.status === "OVERDUE");
+  if (unpaid.length === 0) return { ok: true, message: "Everyone has paid. Nobody to remind. 🎉" };
+
+  const byId = new Map(ledger.members.map((m) => [m.id, m]));
+  let reminded = 0;
+  let alreadyToday = 0;
+  const unreachable: string[] = [];
+  for (const row of unpaid) {
+    const member = byId.get(row.memberId);
+    if (!member) continue;
+    const reminder = manualReminderFor(member, coverageFor(ledger.coverage, member.id), settings, today);
+    if (!reminder) continue;
+    const results = await sendReminder(settings, reminder, { scheduledFor: today, bulk: true });
+    if (results.some((r) => r.status === "sent")) reminded++;
+    else if (results.some((r) => r.detail === "Already sent")) alreadyToday++;
+    else unreachable.push(member.full_name);
+  }
+
+  revalidatePath("/admin/notifications");
+  const parts = [`Reminder sent to ${reminded} member${reminded === 1 ? "" : "s"}.`];
+  if (alreadyToday) parts.push(`${alreadyToday} already got one today.`);
+  if (unreachable.length) {
+    parts.push(
+      `Couldn't reach ${unreachable.join(", ")} (reminders turned off, or no working email / phone / app). Details are under Notifications.`,
+    );
+  }
+  if (reminded === 0 && alreadyToday === 0) return { error: parts.slice(1).join(" ") || "No reminders could be sent." };
+  return { ok: true, message: parts.join(" ") };
 }
 
 /** Admin: create a key pair for app (push) notifications, to paste into Vercel. */

@@ -6,6 +6,7 @@ import { PaymentHistory } from "@/components/admin/payment-history";
 import { PaymentTable } from "@/components/admin/payment-table";
 import { PendingPayments } from "@/components/admin/pending-payments";
 import { SummaryCards } from "@/components/admin/summary-cards";
+import { RemindAllButton } from "@/components/admin/remind-all";
 import { WipeHistoryButton } from "@/components/admin/wipe-history";
 import { buttonClass } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -90,7 +91,18 @@ export default async function PaymentsPage({
       </div>
 
       <Card className="mt-6">
-        <CardHeader title={periodLabel(period)} description={`${summary.paid} paid · ${summary.unpaid} unpaid`} />
+        <CardHeader
+          title={periodLabel(period)}
+          description={`${summary.paid} paid · ${summary.unpaid} unpaid`}
+          action={
+            periodKey(period) === periodKey(ledger.current) ? (
+              <RemindAllButton
+                count={rows.filter((r) => r.status === "UNPAID" || r.status === "OVERDUE").length}
+                monthLabel={periodLabel(period)}
+              />
+            ) : undefined
+          }
+        />
         <PaymentTable
           key={key}
           rows={rows}

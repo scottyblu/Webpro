@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   applicationName: "Breakfast Club",
   appleWebApp: { capable: true, title: "Breakfast Club", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },
+  // The firehouse logo from Settings (or the default icon until one is uploaded).
+  icons: { icon: [{ url: "/club-logo/icon192", type: "image/png" }], apple: [{ url: "/club-logo/apple180", sizes: "180x180" }] },
 };
 
 export const viewport: Viewport = {

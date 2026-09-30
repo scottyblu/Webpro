@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Download, UserPlus } from "lucide-react";
 import { PaymentTable } from "@/components/admin/payment-table";
+import { RemindAllButton } from "@/components/admin/remind-all";
 import { PendingPayments } from "@/components/admin/pending-payments";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
 import { SummaryCards } from "@/components/admin/summary-cards";
@@ -24,6 +25,7 @@ export default async function AdminDashboard() {
   const { settings, period, rows, summary, outstanding } = monthOverviewFrom(ledger, ledger.current);
   const history = monthlyHistoryFrom(ledger, 6);
   const pending = pendingReports(ledger);
+  const unpaidCount = rows.filter((r) => r.status === "UNPAID" || r.status === "OVERDUE").length;
 
   return (
     <>
@@ -55,6 +57,7 @@ export default async function AdminDashboard() {
           <CardHeader title="This month" />
           <CardBody className="space-y-5">
             <PaidProgress paid={summary.paid} total={summary.totalMembers} />
+            <RemindAllButton count={unpaidCount} monthLabel={periodLabel(period)} />
             <dl className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <dt className="text-stone-500">Collected</dt>
