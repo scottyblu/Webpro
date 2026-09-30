@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { ClubLogo } from "@/components/club-logo";
+import { buttonClass } from "@/components/ui/button";
+import { getAdminRecord } from "@/lib/auth";
 import { emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
 import { verifyEmailLogin } from "@/lib/notifications/providers/email";
 import { normalizeKey, normalizeSupabaseUrl } from "@/lib/supabase/config";
@@ -23,9 +26,46 @@ function keyKind(key: string | undefined): string {
   return "unrecognised format";
 }
 
+function isSupabaseAddress(url: string): boolean {
+  try {
+    return /\.supabase\.(co|in)$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Who may see the details: administrators, or anyone while the app can't sign
+ * people in (settings missing or wrong, or no administrator yet), because then
+ * nobody could sign in to find out what's wrong.
+ */
+async function canViewDetails(url: string | undefined, anon: string | undefined, service: string | undefined): Promise<boolean> {
+  try {
+    if (await getAdminRecord()) return true;
+  } catch {
+    return true; // Sign-in itself is broken.
+  }
+  if (!url || !anon || !service) return true;
+  try {
+    const [auth, admins] = await Promise.all([
+      fetch(`${url}/auth/v1/settings`, { headers: { apikey: anon }, cache: "no-store" }),
+      fetch(`${url}/rest/v1/admin_users?select=id&limit=1`, {
+        headers: { apikey: service, Authorization: `Bearer ${service}` },
+        cache: "no-store",
+      }),
+    ]);
+    if (!auth.ok || !admins.ok) return true;
+    const rows = (await admins.json()) as unknown[];
+    return !Array.isArray(rows) || rows.length === 0; // No administrator yet: still setting up.
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Setup check: shows whether the app's settings are wired up correctly,
  * without revealing any key values. Open /setup-check on the live site.
+ * Once the app is working, only administrators can see it.
  */
 export default async function SetupCheckPage() {
   const checks: Check[] = [];
@@ -34,9 +74,28 @@ export default async function SetupCheckPage() {
   const anon = normalizeKey(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
   const service = normalizeKey(process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+  if (!(await canViewDetails(url, anon, service))) {
+    return (
+      <main className="mx-auto min-h-dvh max-w-2xl bg-stone-50 px-4 pb-12 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
+        <ClubLogo />
+        <h1 className="mt-6 text-2xl font-bold">Setup check</h1>
+        <p className="mt-2 text-stone-600">The app is set up and working. This page is only for administrators.</p>
+        <Link href="/login" className={buttonClass("primary", "md", "mt-6")}>
+          Sign in as an administrator
+        </Link>
+      </main>
+    );
+  }
+
   // Supabase URL
   if (!rawUrl) {
     checks.push({ label: "NEXT_PUBLIC_SUPABASE_URL", status: "bad", detail: "Not set in Vercel." });
+  } else if (url && !isSupabaseAddress(url)) {
+    checks.push({
+      label: "NEXT_PUBLIC_SUPABASE_URL",
+      status: "bad",
+      detail: `This is set to ${url}, which isn't a Supabase address. It should be your Supabase Project URL (https://….supabase.co). Your own web address goes in NEXT_PUBLIC_SITE_URL instead.`,
+    });
   } else {
     const cleaned = rawUrl.trim() !== url;
     checks.push({
