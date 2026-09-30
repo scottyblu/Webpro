@@ -110,8 +110,13 @@ export function enabledChannels(settings: ClubSettings): DeliveryChannel[] {
 }
 
 function payInstructions(settings: ClubSettings, amount: string): string | undefined {
-  if (!settings.zelle_contact) return undefined;
-  return `Pay ${amount} with Zelle to ${settings.zelle_recipient_name ? `${settings.zelle_recipient_name} ` : ""}(${settings.zelle_contact}), then tap "I've sent my Zelle payment" in the app.`;
+  const ways: string[] = [];
+  if (settings.zelle_contact) {
+    ways.push(`Zelle to ${settings.zelle_recipient_name ? `${settings.zelle_recipient_name} ` : ""}(${settings.zelle_contact})`);
+  }
+  if (settings.venmo_username) ways.push(`Venmo to @${settings.venmo_username}`);
+  if (ways.length === 0) return undefined;
+  return `Pay ${amount} with ${ways.join(" or ")}, then tap "I've sent my payment" in the app.`;
 }
 
 /** Send one reminder (scheduled or manual). */

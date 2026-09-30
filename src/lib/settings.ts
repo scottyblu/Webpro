@@ -14,6 +14,7 @@ export async function getSettings(supabase: SupabaseClient): Promise<ClubSetting
     admin_phone: null,
     zelle_recipient_name: null,
     zelle_contact: null,
+    venmo_username: null,
     notification_emails: [],
     updated_at: new Date().toISOString(),
     ...DEFAULT_SETTINGS,

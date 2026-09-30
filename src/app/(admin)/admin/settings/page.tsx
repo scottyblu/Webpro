@@ -37,6 +37,7 @@ export default async function SettingsPage() {
 
   const integrations = [
     { name: "Zelle payments", on: !!settings.zelle_contact },
+    { name: "Venmo payments", on: !!settings.venmo_username },
     { name: "Stripe card payments (optional)", on: !!process.env.STRIPE_SECRET_KEY },
     { name: "Stripe webhooks (optional)", on: !!process.env.STRIPE_WEBHOOK_SECRET },
     { name: emailConfigured() === "resend" ? "Email (Resend)" : "Email (Gmail)", on: emailConfigured() !== null },

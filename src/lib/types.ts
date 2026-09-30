@@ -13,7 +13,7 @@ export type NotificationPref = "sms" | "email" | "push" | "sms_email" | "all" | 
  * Status of a member for one specific month, as shown on the dashboards.
  * PAID_AHEAD: paid this month and at least the next month too.
  * OVERDUE:    unpaid and the due date has passed.
- * PENDING:    the member reported a Zelle payment that an admin hasn't confirmed yet.
+ * PENDING:    the member reported a Zelle or Venmo payment that an admin hasn't confirmed yet.
  * There is deliberately no "partially paid": a month is paid only by a full month's dues.
  */
 export type MonthStatus = "PAID" | "PAID_AHEAD" | "UNPAID" | "OVERDUE" | "PENDING" | "CANCELLED";
@@ -30,6 +30,8 @@ export interface ClubSettings {
   admin_phone: string | null;
   zelle_recipient_name: string | null;
   zelle_contact: string | null;
+  /** Venmo username members pay, without the @ (null hides Venmo). */
+  venmo_username: string | null;
   notification_emails: string[];
   reminders_enabled: boolean;
   reminder_days_before: number[];

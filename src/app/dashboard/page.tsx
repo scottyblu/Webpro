@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CreditCard, Send } from "lucide-react";
 import { PushToggle } from "@/components/member/push-toggle";
-import { ZelleCard } from "@/components/member/zelle-card";
+import { PayCard } from "@/components/member/pay-card";
 import { PaymentSummary } from "@/components/payments/payment-summary";
 import { Alert } from "@/components/ui/alert";
 import { MembershipBadge, PaymentStatusBadge, StatusBadge } from "@/components/ui/badge";
@@ -90,9 +90,13 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
   const stripeOn = stripeEnabled();
   const showCardPay = stripeOn && canPay && !autopay;
   const zelleOn = !!settings.zelle_contact && canPay;
-  const pendingZelle = status === "PENDING" && payments.some((p) => p.payment_status === "pending" && p.payment_method !== "stripe");
+  const venmoOn = !!settings.venmo_username && canPay;
+  const payOn = zelleOn || venmoOn;
+  const payWith = [zelleOn && "Zelle", venmoOn && "Venmo"].filter(Boolean).join(" or ");
+  const pendingReport = payments.find((p) => p.payment_status === "pending" && p.payment_method !== "stripe");
+  const pendingZelle = status === "PENDING" && !!pendingReport;
 
-  // Months a Zelle payment can start from: not already paid or waiting for confirmation,
+  // Months a Zelle / Venmo payment can start from: not already paid or waiting for confirmation,
   // from 6 months back (or when they joined) to 2 years ahead.
   const joined = periodOfDateString(member.joined_date);
   const earliest = comparePeriods(joined, addMonths(period, -6)) > 0 ? joined : addMonths(period, -6);
@@ -139,7 +143,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                 {status === "OVERDUE" && `Your ${fee} membership for ${periodLabel(period)} was due ${formatDate(row?.dueDate ?? null)}.`}
                 {status === "PENDING" &&
                   (pendingZelle
-                    ? "Thanks! Your Zelle payment is waiting for an administrator to confirm it arrived."
+                    ? `Thanks! Your ${pendingReport?.payment_method === "venmo" ? "Venmo" : "Zelle"} payment is waiting for an administrator to confirm it arrived.`
                     : "Your payment is processing.")}
                 {status === "CANCELLED" && "Your membership is not active."}
               </span>
@@ -159,10 +163,10 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                   </SubmitButton>
                 </form>
               )}
-              {zelleOn && zelleStart && (
-                <a href="#zelle" className={buttonClass(showCardPay || isPaid || status === "PENDING" ? "secondary" : "primary", "lg")}>
+              {payOn && zelleStart && (
+                <a href="#pay" className={buttonClass(showCardPay || isPaid || status === "PENDING" ? "secondary" : "primary", "lg")}>
                   <Send className="h-5 w-5" aria-hidden />
-                  {isPaid || status === "PENDING" ? "Pay ahead with Zelle" : `Pay ${fee} with Zelle`}
+                  {isPaid || status === "PENDING" ? `Pay ahead with ${payWith}` : `Pay ${fee} with ${payWith}`}
                 </a>
               )}
               {stripeOn && member.stripe_customer_id && (
@@ -173,7 +177,7 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
                 </form>
               )}
             </div>
-            {canPay && !stripeOn && !zelleOn && !isPaid && (
+            {canPay && !stripeOn && !payOn && !isPaid && (
               <p className="mt-4 text-sm text-stone-600">Please pay your dues to a club administrator (see contact details below).</p>
             )}
             {showCardPay && (
@@ -196,12 +200,12 @@ export default async function MemberDashboard({ searchParams }: { searchParams: 
 
       {pushKey && <PushToggle publicKey={pushKey} />}
 
-      {zelleOn && zelleStart && (
-        <ZelleCard
+      {payOn && zelleStart && (
+        <PayCard
           duesCents={summary.duesCents}
           currency={settings.currency}
-          recipientName={settings.zelle_recipient_name}
-          contact={settings.zelle_contact!}
+          zelle={zelleOn ? { recipientName: settings.zelle_recipient_name, contact: settings.zelle_contact! } : null}
+          venmoUsername={venmoOn ? settings.venmo_username : null}
           memberName={member.full_name}
           periods={openPeriods.map((p) => ({ key: periodKey(p), label: periodLabel(p) }))}
           defaultPeriod={periodKey(zelleStart)}

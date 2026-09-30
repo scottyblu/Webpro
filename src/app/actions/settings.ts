@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth";
 import { MIN_PAYMENT_CENTS } from "@/lib/constants";
 import { siteUrl } from "@/lib/env";
+import { cleanVenmoUsername, isValidVenmoUsername } from "@/lib/venmo";
 import { notifyAdmins } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ActionState } from "@/lib/types";
@@ -46,23 +47,33 @@ export async function updateSettings(_prev: ActionState, formData: FormData): Pr
   if (invalid) return { error: `"${invalid}" isn't a valid email address.` };
   if (emails.length > 10) return { error: "Please list at most 10 notification emails." };
 
+  const venmo = cleanVenmoUsername(String(formData.get("venmo_username") ?? ""));
+  if (venmo && !isValidVenmoUsername(venmo)) {
+    return { error: "Enter the Venmo username (5–30 letters, numbers, - or _), e.g. BreakfastClub-8950" };
+  }
+
   const db = createAdminClient();
-  const { error } = await db
-    .from("club_settings")
-    .update({
-      club_name: d.club_name,
-      monthly_fee_cents: Math.round(d.monthly_fee * 100),
-      payment_due_day: d.payment_due_day,
-      currency: d.currency,
-      timezone: d.timezone,
-      admin_name: d.admin_name || null,
-      admin_email: d.admin_email || null,
-      admin_phone: d.admin_phone || null,
-      zelle_recipient_name: d.zelle_recipient_name || null,
-      zelle_contact: d.zelle_contact || null,
-      notification_emails: emails,
-    })
-    .eq("id", 1);
+  const update: Record<string, unknown> = {
+    club_name: d.club_name,
+    monthly_fee_cents: Math.round(d.monthly_fee * 100),
+    payment_due_day: d.payment_due_day,
+    currency: d.currency,
+    timezone: d.timezone,
+    admin_name: d.admin_name || null,
+    admin_email: d.admin_email || null,
+    admin_phone: d.admin_phone || null,
+    zelle_recipient_name: d.zelle_recipient_name || null,
+    zelle_contact: d.zelle_contact || null,
+    venmo_username: venmo || null,
+    notification_emails: emails,
+  };
+  let { error } = await db.from("club_settings").update(update).eq("id", 1);
+  if (error && /venmo_username/.test(error.message)) {
+    if (venmo) return { error: "To add Venmo, first run supabase/migrations/0007_venmo.sql in the Supabase SQL Editor." };
+    // SQL file 0007 isn't run yet and no Venmo username was entered: save everything else.
+    delete update.venmo_username;
+    ({ error } = await db.from("club_settings").update(update).eq("id", 1));
+  }
   if (error) return { error: `Could not save settings: ${error.message}` };
 
   revalidatePath("/", "layout");
