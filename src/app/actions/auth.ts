@@ -3,7 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { siteUrl } from "@/lib/env";
+import { emailConfigured, sendEmail } from "@/lib/notifications/providers/email";
 import { passwordProblem } from "@/lib/password";
+import { getSettings } from "@/lib/settings";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/types";
@@ -183,10 +185,58 @@ export async function signOut() {
   redirect("/login");
 }
 
+// Simple guard against someone using the form to flood an inbox with reset emails.
+const recentResets = new Map<string, number>();
+const RESET_COOLDOWN_MS = 60_000;
+
+function resetThrottled(email: string): boolean {
+  const now = Date.now();
+  for (const [key, at] of recentResets) if (now - at > RESET_COOLDOWN_MS) recentResets.delete(key);
+  if (recentResets.has(email)) return true;
+  recentResets.set(email, now);
+  return false;
+}
+
+/**
+ * "Forgot password": when Gmail is set up, the app makes the reset link itself and
+ * emails it. That link works in ANY browser (the Gmail app, Safari, the installed app),
+ * unlike Supabase's own reset emails, which only work in the browser that asked for them.
+ */
 export async function requestPasswordReset(_prev: ActionState, formData: FormData): Promise<ActionState> {
-  const email = z.string().trim().email().safeParse(formData.get("email"));
+  const email = z.string().trim().toLowerCase().email().safeParse(formData.get("email"));
   if (!email.success) return { error: "Enter a valid email address" };
+  const done: ActionState = { ok: true, message: "If that email has an account, a reset link is on its way. It works in any browser." };
+  if (resetThrottled(email.data)) return done;
+
   try {
+    if (emailConfigured()) {
+      const admin = createAdminClient();
+      const { data, error } = await admin.auth.admin.generateLink({ type: "recovery", email: email.data });
+      // No account with that email: say the same thing, so nobody can test which emails have accounts.
+      if (error || !data.properties?.hashed_token) return done;
+      const link = `${siteUrl()}/auth/callback?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=recovery&next=/reset-password`;
+      const settings = await getSettings(admin);
+      await sendEmail(
+        email.data,
+        `${settings.club_name}: reset your password`,
+        [
+          "Hi,",
+          "",
+          `Someone (hopefully you) asked to reset the password for your ${settings.club_name} account.`,
+          "Tap the link below to choose a new password. It works on your phone or computer, in any browser:",
+          "",
+          link,
+          "",
+          "The link can be used once and expires in 1 hour. If you didn't ask for this, you can ignore this email; your password won't change.",
+          "",
+          `— ${settings.club_name}`,
+        ].join("\n"),
+        settings.club_name,
+      );
+      return done;
+    }
+
+    // Without Gmail set up, fall back to Supabase's own reset email.
     const supabase = await createClient();
     await supabase.auth.resetPasswordForEmail(email.data, {
       redirectTo: `${siteUrl()}/auth/callback?next=/reset-password`,
@@ -194,8 +244,7 @@ export async function requestPasswordReset(_prev: ActionState, formData: FormDat
   } catch (err) {
     return { error: problemMessage(err) };
   }
-  // Same response whether or not the account exists.
-  return { ok: true, message: "If that email has an account, a reset link is on its way." };
+  return done;
 }
 
 export async function updatePassword(_prev: ActionState, formData: FormData): Promise<ActionState> {
