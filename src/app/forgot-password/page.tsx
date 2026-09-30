@@ -20,9 +20,8 @@ export default async function ForgotPasswordPage({ searchParams }: { searchParam
     >
       {error === "browser" && (
         <Alert tone="warning" className="mb-4">
-          That reset link was opened in a different browser than the one you requested it from (for example inside the
-          Gmail app). Request a new link below. When the email arrives, press and hold the button and choose
-          &quot;Open in Safari&quot; (or Chrome).
+          That was an older reset link, which only works in the browser it was requested from. Request a new link below:
+          new links work anywhere, including straight from the Gmail app.
         </Alert>
       )}
       {error === "expired" && (
