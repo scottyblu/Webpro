@@ -99,7 +99,10 @@ export function InstallPrompt({ className, tone = "light" }: { className?: strin
         ) : (
           <p className={cn("mt-0.5 text-sm leading-relaxed", dark ? "text-stone-300" : "text-stone-600")}>
             Tap <Share className="inline h-4 w-4 align-text-bottom" aria-label="Share" /> <strong>Share</strong> in Safari, then{" "}
-            <SquarePlus className="inline h-4 w-4 align-text-bottom" aria-hidden /> <strong>Add to Home Screen</strong>.
+            <SquarePlus className="inline h-4 w-4 align-text-bottom" aria-hidden /> <strong>Add to Home Screen</strong>.{" "}
+            <a href="/install#iphone" className="font-semibold underline">
+              See pictures
+            </a>
           </p>
         )}
       </div>

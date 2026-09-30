@@ -33,6 +33,9 @@ export default async function HomePage() {
           </Link>
         </div>
         <InstallPrompt tone="dark" className="mt-8 max-w-md" />
+        <Link href="/install" className="mt-4 inline-block text-sm font-semibold text-stone-300 underline hover:text-white">
+          How to add this app to your phone (pictures)
+        </Link>
         <div className="mt-16 grid gap-4 sm:grid-cols-3">
           {[
             { icon: CreditCard, title: "Secure payments", text: "Card payments handled by Stripe. We never store your card." },
