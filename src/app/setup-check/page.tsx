@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
-import { Logo } from "@/components/logo";
+import { ClubLogo } from "@/components/club-logo";
 import { emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
 import { verifyEmailLogin } from "@/lib/notifications/providers/email";
 import { normalizeKey, normalizeSupabaseUrl } from "@/lib/supabase/config";
@@ -141,6 +141,12 @@ export default async function SetupCheckPage() {
           });
           const schemaVersion = version.ok ? Number(await version.json()) : 0;
           checks.push({
+            label: "Firehouse logo (SQL file 0006)",
+            status: schemaVersion >= 6 ? "ok" : "bad",
+            detail:
+              schemaVersion >= 6 ? "Installed." : "Run supabase/migrations/0006_club_logo.sql in the SQL Editor.",
+          });
+          checks.push({
             label: "Prepayments, $20 minimum & reminders (SQL file 0005)",
             status: schemaVersion >= 5 ? "ok" : "bad",
             detail:
@@ -200,7 +206,7 @@ export default async function SetupCheckPage() {
 
   return (
     <main className="mx-auto min-h-dvh max-w-2xl bg-stone-50 px-4 pb-12 pt-[calc(env(safe-area-inset-top)+1.5rem)]">
-      <Logo />
+      <ClubLogo />
       <h1 className="mt-6 text-2xl font-bold">Setup check</h1>
       {process.env.BUILD_TIME && (
         <p className="mt-1 text-sm text-stone-500">

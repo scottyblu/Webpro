@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 
-/** Web app manifest: lets members and admins install the club as an app on their phone. */
+/**
+ * Web app manifest: lets members and admins install the club as an app on their phone.
+ * Icons come from /club-logo (the firehouse logo from Settings, or the default icon).
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
@@ -15,13 +18,13 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#1c1917",
     categories: ["finance", "lifestyle"],
     icons: [
-      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-      { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+      { src: "/club-logo/icon192", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/club-logo/icon512", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/club-logo/maskable512", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "My Membership", url: "/dashboard", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
-      { name: "Admin Dashboard", url: "/admin", icons: [{ src: "/icons/icon-192.png", sizes: "192x192" }] },
+      { name: "My Membership", url: "/dashboard", icons: [{ src: "/club-logo/icon192", sizes: "192x192" }] },
+      { name: "Admin Dashboard", url: "/admin", icons: [{ src: "/club-logo/icon192", sizes: "192x192" }] },
     ],
   };
 }

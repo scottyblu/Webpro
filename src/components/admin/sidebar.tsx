@@ -59,7 +59,7 @@ function Footer({ email }: { email: string }) {
   );
 }
 
-export function AdminSidebar({ email, clubName }: { email: string; clubName: string }) {
+export function AdminSidebar({ email, clubName, logo }: { email: string; clubName: string; logo: string | null }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   useEffect(() => setMenuOpen(false), [pathname]);
@@ -69,7 +69,7 @@ export function AdminSidebar({ email, clubName }: { email: string; clubName: str
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col bg-stone-900 px-4 py-6 lg:flex">
         <Link href="/admin" className="mb-8 px-2">
-          <Logo light name={clubName} />
+          <Logo light name={clubName} src={logo} />
         </Link>
         <NavLinks />
         <Footer email={email} />
@@ -79,7 +79,7 @@ export function AdminSidebar({ email, clubName }: { email: string; clubName: str
       <header className="sticky top-0 z-30 bg-stone-900 pt-[env(safe-area-inset-top)] lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <Link href="/admin">
-            <Logo light name={clubName} />
+            <Logo light name={clubName} src={logo} />
           </Link>
           <button
             onClick={() => setMenuOpen((o) => !o)}

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Logo } from "@/components/logo";
+import { ClubLogo } from "@/components/club-logo";
 
 export function AuthShell({ title, subtitle, children, footer }: {
   title: string;
@@ -10,7 +10,7 @@ export function AuthShell({ title, subtitle, children, footer }: {
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center bg-stone-100 px-4 pb-10 pt-[calc(env(safe-area-inset-top)+2.5rem)]">
       <Link href="/" className="mb-8">
-        <Logo />
+        <ClubLogo />
       </Link>
       <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <h1 className="text-2xl font-bold text-stone-900">{title}</h1>

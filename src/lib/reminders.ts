@@ -118,7 +118,13 @@ function payInstructions(settings: ClubSettings, amount: string): string | undef
 export async function sendReminder(
   settings: ClubSettings,
   reminder: Omit<PlannedReminder, "daysUntilDue">,
-  opts: { scheduledFor: string; channels?: DeliveryChannel[]; manual?: boolean },
+  opts: {
+    scheduledFor: string;
+    channels?: DeliveryChannel[];
+    manual?: boolean;
+    /** "Remind everyone who hasn't paid": follows each member's preference, at most once a day. */
+    bulk?: boolean;
+  },
 ): Promise<DeliveryResult[]> {
   const { member, type, period, dueDate } = reminder;
   const amount = formatMoney(memberDues(member, settings), settings.currency);
@@ -128,7 +134,7 @@ export async function sendReminder(
     : (settings.reminder_message ?? DEFAULT_REMINDER_MESSAGE);
 
   return notify(
-    opts.manual ? "manual_reminder" : type,
+    opts.manual || opts.bulk ? "manual_reminder" : type,
     { memberId: member.id, name: member.full_name, email: member.email, phone: member.phone, pref: member.notification_pref },
     {
       clubName: settings.club_name,
@@ -139,12 +145,14 @@ export async function sendReminder(
       payInstructions: payInstructions(settings, amount),
       customMessage: template,
     },
-    opts.manual
-      ? `manual_reminder:${member.id}:${periodKey(period)}:${Date.now()}`
-      : `${type}:${member.id}:${periodKey(period)}:${opts.scheduledFor}`,
+    opts.bulk
+      ? `manual_reminder:${member.id}:${periodKey(period)}:${opts.scheduledFor}:all`
+      : opts.manual
+        ? `manual_reminder:${member.id}:${periodKey(period)}:${Date.now()}`
+        : `${type}:${member.id}:${periodKey(period)}:${opts.scheduledFor}`,
     {
       channels: opts.channels ?? enabledChannels(settings),
-      usePreference: !opts.manual,
+      usePreference: !opts.manual || !!opts.bulk,
       period,
       scheduledFor: opts.scheduledFor,
     },

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { removeAdmin } from "@/app/actions/settings";
+import { LogoUpload } from "@/components/admin/logo-upload";
 import {
   AddAdminForm,
   PushKeysGenerator,
@@ -12,7 +13,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { logoSrc } from "@/components/logo";
 import { requireAdmin } from "@/lib/auth";
+import { getLogoVersion } from "@/lib/logo";
 import { formatDate } from "@/lib/format";
 import { emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
 import { getSettings } from "@/lib/settings";
@@ -29,6 +32,7 @@ export default async function SettingsPage() {
     supabase.from("admin_users").select("*").order("created_at"),
   ]);
   const admins = (data ?? []) as AdminUser[];
+  const logoVersion = await getLogoVersion();
   const services = { sms: smsConfigured(), email: emailConfigured() !== null, push: pushConfigured() };
 
   const integrations = [
@@ -71,6 +75,13 @@ export default async function SettingsPage() {
         </div>
 
         <div className="space-y-6">
+          <Card>
+            <CardHeader title="Firehouse logo" description="Shown on the login screen, in the menu and as the app icon on phones." />
+            <CardBody>
+              <LogoUpload currentLogo={logoSrc(logoVersion)} />
+            </CardBody>
+          </Card>
+
           <Card>
             <CardHeader title="Administrators" description="People who can open the admin dashboard." />
             <ul className="divide-y divide-stone-100">
