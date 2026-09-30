@@ -1,0 +1,169 @@
+/* Drawn phone screens for the "add to home screen" guide (/install). */
+.root {
+  --accent: #e8650a;
+  --tap: rgba(232, 101, 10, 0.22);
+  --bezel: #1c1917;
+  --screen: #fbfaf8;
+  --screen-ink: #2a2522;
+  --screen-line: #e7e2dc;
+  --sheet: #f1eee9;
+  --muted: #78716c;
+}
+
+.phone {
+  width: 124px;
+  aspect-ratio: 9 / 18.5;
+  max-width: 100%;
+  flex: none;
+  background: var(--bezel);
+  border-radius: 22px;
+  padding: 6px;
+}
+.screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 17px;
+  background: var(--screen);
+  color: var(--screen-ink);
+  font-size: 7px;
+  line-height: 1.3;
+}
+.bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 10px;
+  height: 16px;
+  border-radius: 8px;
+  background: var(--screen-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 6.5px;
+}
+.barShort { right: 22px; }
+.page {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  top: 38px;
+  display: grid;
+  gap: 5px;
+}
+.page i { display: block; height: 5px; border-radius: 3px; background: var(--screen-line); }
+.page i:first-child { width: 60%; height: 8px; background: var(--accent); }
+.pageTop { top: 12px; }
+.toolbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  border-top: 1px solid var(--screen-line);
+  background: var(--screen);
+}
+.toolbar > span { width: 12px; height: 12px; display: grid; place-items: center; }
+.dots { position: absolute; top: 12px; right: 8px; width: 8px; height: 12px; display: grid; place-items: center; }
+
+.ring { position: relative; }
+.ring::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--tap);
+  animation: pulse 1.6s ease-out infinite;
+}
+.box::after { inset: -3px; border-radius: 7px; }
+@keyframes pulse {
+  0% { transform: scale(0.85); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring::after { animation: none; }
+}
+
+.sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  gap: 4px;
+  padding: 8px 8px 10px;
+  border-radius: 12px 12px 0 0;
+  background: var(--sheet);
+}
+.menu {
+  position: absolute;
+  top: 24px;
+  right: 6px;
+  width: 78%;
+  display: grid;
+  gap: 3px;
+  padding: 5px;
+  border-radius: 6px;
+  background: var(--sheet);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.18);
+}
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 6px;
+  border-radius: 5px;
+  background: var(--screen);
+  font-size: 6.5px;
+}
+.menu .row { background: transparent; padding: 4px 5px; }
+.hl { outline: 2px solid var(--accent); background: var(--tap) !important; font-weight: 700; }
+
+.topActions {
+  position: absolute;
+  top: 10px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 6.5px;
+  font-weight: 700;
+}
+.dialog {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 30%;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--sheet);
+  font-size: 6.5px;
+}
+.dialogHigh { top: 28px; }
+.appRow { display: flex; align-items: center; gap: 5px; font-weight: 700; }
+.appRow img { width: 18px; height: 18px; border-radius: 5px; background: #fff; object-fit: contain; }
+.muted { color: var(--muted); }
+.accentText { color: var(--accent); }
+.buttons { display: flex; justify-content: flex-end; gap: 8px; font-weight: 700; }
+
+.home {
+  position: absolute;
+  top: 22px;
+  left: 10px;
+  right: 10px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 9px 6px;
+}
+.home > span { aspect-ratio: 1; border-radius: 6px; background: var(--screen-line); }
+.home > .me { background: #fff; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--accent); }
+.home > .round { border-radius: 50%; }
+.home > .me img { width: 88%; height: 88%; object-fit: contain; border-radius: inherit; }

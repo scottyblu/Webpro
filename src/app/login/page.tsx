@@ -22,6 +22,11 @@ export default async function LoginPage({
           <Link href="/register" className="font-semibold text-brand-600 hover:text-brand-700">
             Create an account
           </Link>
+          <span className="mt-3 block text-center">
+            <Link href="/install" className="font-medium text-stone-500 underline hover:text-stone-800">
+              How to add this app to your phone
+            </Link>
+          </span>
         </>
       }
     >
