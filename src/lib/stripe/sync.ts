@@ -144,7 +144,11 @@ export async function recordInvoice(invoice: Stripe.Invoice, status: PaymentStat
     }
     const { error } = await db.from("payments").update(update).eq("id", existing.id);
     if (error) throw new Error(`Failed to update payment for invoice ${invoice.id}: ${error.message}`);
-    if (status === "paid") await sendPaymentNotice(member, "payment_confirmation", amount, invoice, settings);
+    if (status === "paid") {
+      const target = { year: update.payment_year as number, month: update.payment_month as number };
+      await allocate(db, existing.id, member.id, target, amount);
+      await sendPaymentNotice(member, "payment_confirmation", amount, invoice, settings, target);
+    }
     return;
   }
 
@@ -152,25 +156,30 @@ export async function recordInvoice(invoice: Stripe.Invoice, status: PaymentStat
   // If this month was already paid another way (e.g. cash), apply the Stripe payment to the next unpaid month.
   if (status === "paid") period = await firstUnpaidPeriod(db, member.id, period);
 
-  const { error } = await db.from("payments").insert({
-    member_id: member.id,
-    member_name: member.full_name,
-    amount_cents: amount,
-    currency: invoice.currency,
-    payment_month: period.month,
-    payment_year: period.year,
-    payment_date: paymentDate,
-    payment_method: "stripe",
-    payment_status: status,
-    stripe_payment_id: invoice.id,
-    notes: status === "failed" ? "Card payment failed" : null,
-  });
+  const { data: inserted, error } = await db
+    .from("payments")
+    .insert({
+      member_id: member.id,
+      member_name: member.full_name,
+      amount_cents: amount,
+      currency: invoice.currency,
+      payment_month: period.month,
+      payment_year: period.year,
+      payment_date: paymentDate,
+      payment_method: "stripe",
+      payment_status: status,
+      stripe_payment_id: invoice.id,
+      notes: status === "failed" ? "Card payment failed" : null,
+    })
+    .select("id")
+    .single();
   if (error) {
     if (error.code === "23505") return; // Unique violation: a concurrent delivery already recorded it.
     throw new Error(`Failed to record payment for invoice ${invoice.id}: ${error.message}`);
   }
 
   if (status === "paid") {
+    await allocate(db, inserted.id as string, member.id, period, amount);
     await sendPaymentNotice(member, "payment_confirmation", amount, invoice, settings, period);
   } else if (status === "failed") {
     await sendPaymentNotice(member, "failed_payment_notice", amount, invoice, settings, period);
@@ -183,17 +192,30 @@ export async function recordInvoice(invoice: Stripe.Invoice, status: PaymentStat
   }
 }
 
+/** First month from `start` that no payment covers yet. */
 async function firstUnpaidPeriod(db: Db, memberId: string, start: Period): Promise<Period> {
   const { data } = await db
-    .from("payments")
-    .select("payment_year, payment_month")
+    .from("payment_allocations")
+    .select("period_year, period_month")
     .eq("member_id", memberId)
-    .eq("payment_status", "paid")
-    .gte("payment_year", start.year);
-  const paid = new Set((data ?? []).map((p) => periodKey({ year: p.payment_year, month: p.payment_month })));
+    .gte("period_year", start.year);
+  const paid = new Set((data ?? []).map((a) => periodKey({ year: a.period_year, month: a.period_month })));
   let p = start;
   for (let i = 0; i < 24 && paid.has(periodKey(p)); i++) p = addMonths(p, 1);
   return p;
+}
+
+/** A paid card payment covers one month: record that coverage (idempotent). */
+async function allocate(db: Db, paymentId: string, memberId: string, period: Period, amount: number) {
+  if (amount < 2000) return;
+  const { error } = await db.from("payment_allocations").insert({
+    payment_id: paymentId,
+    member_id: memberId,
+    period_year: period.year,
+    period_month: period.month,
+    amount_cents: amount,
+  });
+  if (error && error.code !== "23505") console.error(`[stripe] could not record coverage for ${paymentId}`, error.message);
 }
 
 async function sendPaymentNotice(
@@ -206,7 +228,7 @@ async function sendPaymentNotice(
 ) {
   await notify(
     type,
-    { memberId: member.id, name: member.full_name, email: member.email, phone: member.phone },
+    { memberId: member.id, name: member.full_name, email: member.email, phone: member.phone, pref: member.notification_pref },
     {
       clubName: settings.club_name,
       amount: formatMoney(amount, invoice.currency),

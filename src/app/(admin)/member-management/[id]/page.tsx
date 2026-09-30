@@ -9,22 +9,29 @@ import {
   reactivateMember,
   updateMember,
 } from "@/app/actions/members";
-import { confirmPendingPayment, recordManualPayment, rejectPendingPayment, voidManualPayment } from "@/app/actions/payments";
+import { confirmPendingPayment, recordPayment, rejectPendingPayment } from "@/app/actions/payments";
+import { sendManualReminder } from "@/app/actions/reminders";
 import { ManualPaymentForm } from "@/components/admin/manual-payment-form";
 import { MemberForm } from "@/components/admin/member-form";
+import { NotificationHistory, type NotificationLogRow } from "@/components/admin/notification-history";
+import { PaymentHistory } from "@/components/admin/payment-history";
+import { pendingCovers } from "@/components/admin/pending-payments";
+import { SendReminderForm, type ReminderChannelOption } from "@/components/admin/send-reminder";
+import { PaymentSummary } from "@/components/payments/payment-summary";
 import { Alert } from "@/components/ui/alert";
-import { MembershipBadge, PaymentStatusBadge, StatusBadge } from "@/components/ui/badge";
+import { MembershipBadge } from "@/components/ui/badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { requireAdmin } from "@/lib/auth";
-import { buildMonthRows, hasLiveSubscription, paidPeriodKeys } from "@/lib/billing";
-import { PAYMENT_METHOD_LABELS } from "@/lib/constants";
-import { getMemberWithPayments } from "@/lib/data";
+import { buildCoverage, coverageFor, firstUnpaidPeriod, hasLiveSubscription, memberSummary } from "@/lib/billing";
+import { NOTIFICATION_PREF_LABELS } from "@/lib/constants";
+import { coveredMonthsByPayment, getMemberWithPayments } from "@/lib/data";
 import { formatDate, formatMoney, initials } from "@/lib/format";
+import { channelsForPref, emailConfigured, pushConfigured, smsConfigured } from "@/lib/notifications";
+import { memberPushSubscriptions } from "@/lib/notifications/providers/push";
 import {
   addMonths,
   comparePeriods,
-  currentPeriod,
   parsePeriodKey,
   periodKey,
   periodLabel,
@@ -32,6 +39,7 @@ import {
   periodRange,
   zonedDateString,
 } from "@/lib/periods";
+import { manualReminderFor } from "@/lib/reminders";
 import { getSettings } from "@/lib/settings";
 import { createClient } from "@/lib/supabase/server";
 
@@ -52,33 +60,69 @@ export default async function MemberProfilePage({
   const supabase = await createClient();
   const [result, settings] = await Promise.all([getMemberWithPayments(supabase, id), getSettings(supabase)]);
   if (!result) notFound();
-  const { member, payments } = result;
+  const { member, payments, allocations } = result;
 
-  const current = currentPeriod(settings.timezone);
-  const [row] = buildMonthRows({
-    members: [member],
-    payments,
-    period: current,
-    settings,
-    futurePaidByMember: new Map([[member.id, paidPeriodKeys(payments)]]),
-  });
-  const monthStatus = row?.status ?? "CANCELLED";
-  const totalPaid = payments.filter((p) => p.payment_status === "paid").reduce((s, p) => s + p.amount_cents, 0);
+  const summary = memberSummary({ member, payments, allocations, settings });
+  const current = summary.currentPeriod;
+  const cov = coverageFor(buildCoverage(allocations, payments), member.id);
+  const covered = coveredMonthsByPayment(allocations);
   const autopay = hasLiveSubscription(member);
+  const today = zonedDateString(new Date(), settings.timezone);
 
-  // Months the admin can record a payment for: from 12 months before joining/now up to 3 months ahead.
+  // Months a payment can start from: from 12 months back (or when they joined) to 2 years ahead.
   const joinPeriod = periodOfDateString(member.joined_date);
   const earliest = comparePeriods(joinPeriod, addMonths(current, -12)) < 0 ? joinPeriod : addMonths(current, -12);
-  const paidKeys = paidPeriodKeys(payments);
-  const periodOptions = periodRange(earliest, addMonths(current, 3)).map((p) => ({
-    key: periodKey(p),
-    label: `${periodLabel(p)}${paidKeys.has(periodKey(p)) ? " (paid)" : ""}`,
-  }));
+  const paidKeys = [...cov.paid.keys()];
+  const periodOptions = periodRange(earliest, addMonths(current, 24))
+    .reverse()
+    .map((p) => ({ key: periodKey(p), label: `${periodLabel(p)}${cov.paid.has(periodKey(p)) ? " (paid)" : ""}` }));
   const requested = parsePeriodKey(record);
-  const firstUnpaid = periodRange(earliest, current).reverse().find((p) => !paidKeys.has(periodKey(p)) && comparePeriods(p, joinPeriod) >= 0);
-  const defaultPeriod = requested ? periodKey(requested) : periodKey(paidKeys.has(periodKey(current)) ? (firstUnpaid ?? addMonths(current, 1)) : current);
+  const defaultPeriod = periodKey(requested ?? firstUnpaidPeriod(member, cov, settings));
 
+  const pending = payments.filter((p) => p.payment_status === "pending" && p.payment_method !== "stripe");
   const isEnded = member.membership_status === "inactive" || member.membership_status === "cancelled";
+
+  // Send reminder: only the methods that can reach this member.
+  const pushDevices = pushConfigured() ? (await memberPushSubscriptions(member.id)).length : 0;
+  const reminderOptions: ReminderChannelOption[] = [
+    {
+      value: "sms",
+      label: "Text message (SMS)",
+      available: !!member.phone && smsConfigured(),
+      detail: !member.phone ? "No phone number on file" : smsConfigured() ? member.phone : "Text messages aren't set up (Twilio)",
+    },
+    {
+      value: "email",
+      label: "Email",
+      available: !!member.email && !!emailConfigured(),
+      detail: emailConfigured() ? member.email : "Email isn't set up",
+    },
+    {
+      value: "push",
+      label: "App notification",
+      available: pushDevices > 0,
+      detail: !pushConfigured()
+        ? "App notifications aren't set up"
+        : pushDevices > 0
+          ? `${pushDevices} device${pushDevices === 1 ? "" : "s"}`
+          : "They haven't turned on notifications in the app",
+    },
+  ];
+  const nextReminder = manualReminderFor(member, cov, settings, today);
+  const reminderAbout = nextReminder
+    ? `${periodLabel(nextReminder.period)} · ${formatMoney(summary.duesCents, settings.currency)} ${
+        nextReminder.type === "past_due_reminder" ? "overdue since" : "due"
+      } ${formatDate(nextReminder.dueDate)}`
+    : null;
+  const prefChannels = channelsForPref(member.notification_pref);
+
+  const { data: logRows } = await supabase
+    .from("notification_log")
+    .select("*")
+    .eq("member_id", member.id)
+    .neq("channel", "log")
+    .order("created_at", { ascending: false })
+    .limit(30);
 
   return (
     <>
@@ -109,6 +153,7 @@ export default async function MemberProfilePage({
                   <Phone className="h-4 w-4" aria-hidden /> {member.phone}
                 </a>
               )}
+              <MembershipBadge status={member.membership_status} />
             </div>
           </div>
         </div>
@@ -142,138 +187,152 @@ export default async function MemberProfilePage({
         </div>
       </div>
 
-      {/* Overview */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
-        <Overview label="Membership status">
-          <MembershipBadge status={member.membership_status} />
-        </Overview>
-        <Overview label={periodLabel(current)}>
-          <StatusBadge status={monthStatus} />
-        </Overview>
-        <Overview label="Date joined">{formatDate(member.joined_date)}</Overview>
-        <Overview label="Total amount paid">{formatMoney(totalPaid, settings.currency)}</Overview>
-        <Overview label="Next payment due">{formatDate(row?.nextDueDate ?? null)}</Overview>
+      {/* Payment summary */}
+      <div className="mt-6">
+        <PaymentSummary summary={summary} currency={settings.currency} timeZone={settings.timezone} />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-5">
-        {/* Payment history */}
-        <Card className="xl:col-span-3">
-          <CardHeader title="Payment history" description={`${payments.length} record${payments.length === 1 ? "" : "s"} · kept permanently`} />
-          {payments.length === 0 ? (
-            <CardBody>
-              <p className="py-8 text-center text-sm text-stone-500">No payments yet.</p>
-            </CardBody>
-          ) : (
-            <ul className="divide-y divide-stone-100">
-              {payments.map((p) => (
-                <li key={p.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 sm:px-6">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-stone-900">
-                      {periodLabel({ year: p.payment_year, month: p.payment_month })} — {formatMoney(p.amount_cents, p.currency)} —{" "}
-                      {PAYMENT_METHOD_LABELS[p.payment_method]}
-                    </p>
-                    <p className="text-xs text-stone-500">
-                      {formatDate(p.payment_date, settings.timezone)}
-                      {p.notes && <> · {p.notes}</>}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <PaymentStatusBadge status={p.payment_status} />
-                    {p.payment_method !== "stripe" && p.payment_status === "pending" && (
-                      <>
-                        <form action={confirmPendingPayment.bind(null, p.id)}>
-                          <SubmitButton variant="success" size="sm" className="text-xs" pendingText="…">
-                            Confirm
-                          </SubmitButton>
-                        </form>
-                        <form action={rejectPendingPayment.bind(null, p.id)}>
-                          <SubmitButton
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs text-stone-500"
-                            pendingText="…"
-                            confirmMessage="Mark this payment as not received? It stays in the history as voided."
-                          >
-                            Reject
-                          </SubmitButton>
-                        </form>
-                      </>
-                    )}
-                    {p.payment_method !== "stripe" && p.payment_status === "paid" && (
-                      <form action={voidManualPayment.bind(null, p.id)}>
-                        <SubmitButton
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs text-stone-500"
-                          pendingText="…"
-                          confirmMessage="Void this manual payment? Use this only if it was recorded by mistake. It stays in the history marked as voided."
-                        >
-                          Void
-                        </SubmitButton>
-                      </form>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+      {summary.owedCents > 0 && (
+        <Alert tone="error" className="mt-4">
+          <strong>Owes {formatMoney(summary.owedCents, settings.currency)}</strong> for{" "}
+          {summary.owedMonths.map((p) => periodLabel(p)).join(", ")}.
+        </Alert>
+      )}
+
+      {pending.length > 0 && (
+        <Card className="mt-4 border-amber-300 ring-1 ring-amber-200">
+          <CardHeader title="Waiting for confirmation" description="They say they've sent these. Check your bank, then confirm or reject." />
+          <ul className="divide-y divide-stone-100">
+            {pending.map((p) => (
+              <li key={p.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p className="text-sm">
+                  <span className="font-semibold">{formatMoney(p.amount_cents, p.currency)}</span> Zelle {pendingCovers(p)}
+                  <span className="block text-xs text-stone-500">Reported {formatDate(p.created_at, settings.timezone)}</span>
+                </p>
+                <div className="flex gap-2">
+                  <form action={confirmPendingPayment.bind(null, p.id)}>
+                    <SubmitButton variant="success" size="sm" pendingText="…">
+                      Received
+                    </SubmitButton>
+                  </form>
+                  <form action={rejectPendingPayment.bind(null, p.id)}>
+                    <SubmitButton
+                      variant="secondary"
+                      size="sm"
+                      pendingText="…"
+                      confirmMessage="Mark this payment as not received? It stays in the history as voided."
+                    >
+                      Not received
+                    </SubmitButton>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
         </Card>
+      )}
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-5">
+        <div className="space-y-6 xl:col-span-3">
+          {/* Payment history */}
+          <Card>
+            <CardHeader
+              title="Payment history"
+              description={`${payments.length} record${payments.length === 1 ? "" : "s"} · ${formatMoney(summary.totalPaidCents, settings.currency)} paid in total`}
+            />
+            <PaymentHistory payments={payments} covered={covered} timeZone={settings.timezone} />
+          </Card>
+
+          {/* Notification history */}
+          <Card>
+            <CardHeader
+              title="Notifications"
+              description={`Reminders by: ${NOTIFICATION_PREF_LABELS[member.notification_pref]}`}
+            />
+            <NotificationHistory
+              rows={(logRows ?? []) as NotificationLogRow[]}
+              timeZone={settings.timezone}
+              emptyText="No notifications sent to this member yet."
+            />
+          </Card>
+        </div>
 
         <div className="space-y-6 xl:col-span-2">
-          {/* Manual payment */}
+          {/* Record a payment */}
           <Card>
             <div id="record-payment" className="scroll-mt-20" />
-            <CardHeader title="Record a payment" description="Cash, Zelle, Venmo, Cash App, check or other." />
+            <CardHeader title="Record a payment" description="Cash, Zelle, Venmo, Cash App, check or other. Minimum $20." />
             <CardBody>
               <ManualPaymentForm
-                action={recordManualPayment.bind(null, member.id)}
+                action={recordPayment.bind(null, member.id)}
                 periods={periodOptions}
                 defaultPeriod={defaultPeriod}
-                defaultAmount={(settings.monthly_fee_cents / 100).toFixed(2)}
-                today={zonedDateString(new Date(), settings.timezone)}
+                duesCents={summary.duesCents}
+                currency={settings.currency}
+                paidKeys={paidKeys}
+                today={today}
+              />
+            </CardBody>
+          </Card>
+
+          {/* Send reminder */}
+          <Card>
+            <CardHeader
+              title="Send reminder"
+              description={
+                prefChannels.length === 0
+                  ? "They chose not to get automatic reminders; you can still send one."
+                  : "Send a payment reminder now."
+              }
+            />
+            <CardBody>
+              <SendReminderForm
+                action={sendManualReminder.bind(null, member.id)}
+                options={reminderOptions}
+                about={reminderAbout}
               />
             </CardBody>
           </Card>
 
           {/* Stripe */}
-          <Card>
-            <CardHeader title="Stripe auto-pay" />
-            <CardBody className="space-y-3 text-sm">
-              {member.stripe_subscription_id ? (
-                <>
-                  <p>
-                    Subscription: <span className="font-medium">{member.subscription_status ?? "unknown"}</span>
-                    {member.cancel_at_period_end && <span className="text-amber-700"> · cancels at period end</span>}
-                  </p>
-                  {member.current_period_end && (
+          {(member.stripe_subscription_id || process.env.STRIPE_SECRET_KEY) && (
+            <Card>
+              <CardHeader title="Stripe auto-pay" />
+              <CardBody className="space-y-3 text-sm">
+                {member.stripe_subscription_id ? (
+                  <>
                     <p>
-                      Current period ends: <span className="font-medium">{formatDate(member.current_period_end, settings.timezone)}</span>
+                      Subscription: <span className="font-medium">{member.subscription_status ?? "unknown"}</span>
+                      {member.cancel_at_period_end && <span className="text-amber-700"> · cancels at period end</span>}
                     </p>
-                  )}
-                  {autopay && !member.cancel_at_period_end && (
-                    <form action={cancelMemberSubscription.bind(null, member.id)}>
-                      <SubmitButton
-                        variant="secondary"
-                        size="sm"
-                        pendingText="Cancelling…"
-                        confirmMessage="Cancel this member's Stripe subscription at the end of the current paid period?"
-                      >
-                        Cancel subscription at period end
-                      </SubmitButton>
-                    </form>
-                  )}
-                </>
-              ) : (
-                <p className="text-stone-500">
-                  {!process.env.STRIPE_SECRET_KEY
-                    ? "Stripe card payments are not set up (optional)."
-                    : member.user_id
+                    {member.current_period_end && (
+                      <p>
+                        Current period ends: <span className="font-medium">{formatDate(member.current_period_end, settings.timezone)}</span>
+                      </p>
+                    )}
+                    {autopay && !member.cancel_at_period_end && (
+                      <form action={cancelMemberSubscription.bind(null, member.id)}>
+                        <SubmitButton
+                          variant="secondary"
+                          size="sm"
+                          pendingText="Cancelling…"
+                          confirmMessage="Cancel this member's Stripe subscription at the end of the current paid period?"
+                        >
+                          Cancel subscription at period end
+                        </SubmitButton>
+                      </form>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-stone-500">
+                    {member.user_id
                       ? "Not subscribed. They can start auto-pay from their member dashboard."
                       : "Not subscribed. This member hasn't created a login yet."}
-                </p>
-              )}
-            </CardBody>
-          </Card>
+                  </p>
+                )}
+              </CardBody>
+            </Card>
+          )}
 
           {/* Edit */}
           <Card>
@@ -282,12 +341,17 @@ export default async function MemberProfilePage({
               <MemberForm
                 action={updateMember.bind(null, member.id)}
                 submitLabel="Save changes"
+                clubDues={formatMoney(settings.monthly_fee_cents, settings.currency)}
+                clubDueDay={settings.payment_due_day}
                 initial={{
                   full_name: member.full_name,
                   email: member.email,
                   phone: member.phone ?? "",
                   joined_date: member.joined_date,
                   notes: member.notes ?? "",
+                  notification_pref: member.notification_pref,
+                  dues: member.dues_cents ? (member.dues_cents / 100).toFixed(2) : "",
+                  due_day: member.due_day ? String(member.due_day) : "",
                 }}
               />
             </CardBody>
@@ -295,14 +359,5 @@ export default async function MemberProfilePage({
         </div>
       </div>
     </>
-  );
-}
-
-function Overview({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Card className="p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-stone-500">{label}</p>
-      <div className="mt-2 text-lg font-bold">{children}</div>
-    </Card>
   );
 }

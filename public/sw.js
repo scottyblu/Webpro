@@ -5,7 +5,7 @@
  *   payment data are NEVER cached, so private information isn't stored on the device
  *   and the dashboard always shows live payment status.
  */
-const VERSION = "v2";
+const VERSION = "v3";
 const STATIC_CACHE = `tbc-static-${VERSION}`;
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/icon.svg"];
@@ -53,4 +53,38 @@ self.addEventListener("fetch", (event) => {
     );
   }
   // Everything else (API routes, data) goes straight to the network.
+});
+
+// App notifications (payment reminders). The server sends { title, body, url }.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "The Breakfast Club", {
+      body: data.body || "",
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url || "/dashboard" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "/dashboard", self.location.origin);
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const w of windows) {
+        if (new URL(w.url).origin === target.origin && "focus" in w) {
+          w.navigate(target.href);
+          return w.focus();
+        }
+      }
+      return self.clients.openWindow(target.href);
+    }),
+  );
 });

@@ -10,6 +10,7 @@ export function SubmitButton({
   size = "md",
   className,
   confirmMessage,
+  disabled = false,
 }: {
   children: React.ReactNode;
   pendingText?: string;
@@ -18,12 +19,14 @@ export function SubmitButton({
   className?: string;
   /** Ask the user to confirm before submitting (for destructive actions). */
   confirmMessage?: string;
+  /** Keep the button disabled (e.g. until the form is valid). */
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || disabled}
       className={buttonClass(variant, size, className)}
       onClick={(e) => {
         if (confirmMessage && !window.confirm(confirmMessage)) e.preventDefault();

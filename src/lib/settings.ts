@@ -5,6 +5,8 @@ import type { ClubSettings } from "@/lib/types";
 
 export async function getSettings(supabase: SupabaseClient): Promise<ClubSettings> {
   const { data } = await supabase.from("club_settings").select("*").eq("id", 1).maybeSingle();
+  // Columns added by newer SQL files may be missing until those files are run; fall back to defaults.
+  const row = Object.fromEntries(Object.entries(data ?? {}).filter(([, v]) => v !== null && v !== undefined));
   return {
     id: 1,
     admin_name: null,
@@ -15,6 +17,6 @@ export async function getSettings(supabase: SupabaseClient): Promise<ClubSetting
     notification_emails: [],
     updated_at: new Date().toISOString(),
     ...DEFAULT_SETTINGS,
-    ...(data ?? {}),
+    ...row,
   } as ClubSettings;
 }

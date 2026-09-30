@@ -1,12 +1,14 @@
 import type { MembershipStatus, MonthStatus, PaymentStatus } from "@/lib/types";
-import { MEMBERSHIP_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
+import { MEMBERSHIP_STATUS_LABELS, MONTH_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/constants";
 import { cn } from "./cn";
 
-type Tone = "green" | "red" | "yellow" | "gray" | "blue";
+type Tone = "green" | "teal" | "red" | "darkred" | "yellow" | "gray" | "blue";
 
 const toneClasses: Record<Tone, string> = {
   green: "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
+  teal: "bg-teal-100 text-teal-800 ring-teal-600/30",
   red: "bg-red-100 text-red-800 ring-red-600/20",
+  darkred: "bg-red-600 text-white ring-red-700",
   yellow: "bg-amber-100 text-amber-800 ring-amber-600/20",
   gray: "bg-stone-100 text-stone-600 ring-stone-500/20",
   blue: "bg-sky-100 text-sky-800 ring-sky-600/20",
@@ -14,7 +16,9 @@ const toneClasses: Record<Tone, string> = {
 
 const dotClasses: Record<Tone, string> = {
   green: "bg-emerald-500",
+  teal: "bg-teal-500",
   red: "bg-red-500",
+  darkred: "bg-white",
   yellow: "bg-amber-500",
   gray: "bg-stone-400",
   blue: "bg-sky-500",
@@ -35,13 +39,20 @@ export function Badge({ tone, children, size = "sm" }: { tone: Tone; children: R
   );
 }
 
-const monthTone: Record<MonthStatus, Tone> = { PAID: "green", UNPAID: "red", PENDING: "yellow", CANCELLED: "gray" };
+const monthTone: Record<MonthStatus, Tone> = {
+  PAID: "green",
+  PAID_AHEAD: "teal",
+  UNPAID: "red",
+  OVERDUE: "darkred",
+  PENDING: "yellow",
+  CANCELLED: "gray",
+};
 
-/** PAID (green) · UNPAID (red) · PENDING (yellow) · CANCELLED (gray) */
+/** PAID (green) · PAID AHEAD (teal) · UNPAID (red) · OVERDUE (dark red) · PENDING (yellow) · CANCELLED (gray) */
 export function StatusBadge({ status, size }: { status: MonthStatus; size?: "sm" | "lg" }) {
   return (
     <Badge tone={monthTone[status]} size={size}>
-      {status}
+      {MONTH_STATUS_LABELS[status]}
     </Badge>
   );
 }
