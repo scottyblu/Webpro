@@ -22,7 +22,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   manual_reminder: "Reminder (sent by admin)",
   payment_confirmation: "Payment receipt",
   failed_payment_notice: "Card payment failed",
-  admin_zelle_reported: "Admin: Zelle reported",
+  admin_zelle_reported: "Admin: Zelle / Venmo reported",
   admin_payment_failed: "Admin: card failed",
   admin_overdue_summary: "Admin: who still owes",
   admin_monthly_summary: "Admin: monthly summary",

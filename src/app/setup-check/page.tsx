@@ -141,6 +141,11 @@ export default async function SetupCheckPage() {
           });
           const schemaVersion = version.ok ? Number(await version.json()) : 0;
           checks.push({
+            label: "Venmo (SQL file 0007)",
+            status: schemaVersion >= 7 ? "ok" : "bad",
+            detail: schemaVersion >= 7 ? "Installed." : "Run supabase/migrations/0007_venmo.sql in the SQL Editor.",
+          });
+          checks.push({
             label: "Firehouse logo (SQL file 0006)",
             status: schemaVersion >= 6 ? "ok" : "bad",
             detail:

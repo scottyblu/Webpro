@@ -371,11 +371,11 @@ export async function wipePaymentHistory(_prev: ActionState, formData: FormData)
 }
 
 /**
- * A member says "I've sent my Zelle payment" (one month, several months, a year, or
- * a custom amount of at least $20). It's recorded as PENDING and only covers months
- * once an admin confirms the money arrived.
+ * A member says "I've sent my Zelle / Venmo payment" (one month, several months, a
+ * year, or a custom amount of at least $20). It's recorded as PENDING and only covers
+ * months once an admin confirms the money arrived.
  */
-export async function reportZellePayment(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function reportMemberPayment(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const user = await getCurrentUser();
   const member = await getCurrentMember();
   if (!user || !member) return { error: "You must be signed in." };
@@ -383,7 +383,11 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
 
   const db = createAdminClient();
   const settings = await getSettings(db);
-  if (!settings.zelle_contact) return { error: "Zelle payments aren't set up yet. Please contact an administrator." };
+  const method: PaymentMethod = formData.get("method") === "venmo" ? "venmo" : "zelle";
+  const via = PAYMENT_METHOD_LABELS[method];
+  if (method === "zelle" ? !settings.zelle_contact : !settings.venmo_username) {
+    return { error: `${via} payments aren't set up yet. Please contact an administrator.` };
+  }
   const dues = memberDues(member, settings);
 
   const option = resolveOption(formData, dues);
@@ -406,7 +410,7 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
   const { data: paymentId, error } = await recordPaymentRpc(db, {
     memberId: member.id,
     amountCents: option.amountCents,
-    method: "zelle",
+    method,
     status: "pending",
     date: new Date(`${zonedDateString(new Date(), settings.timezone)}T12:00:00Z`).toISOString(),
     months: option.months,
@@ -427,12 +431,12 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
   const covers = planned.length ? ` for ${describeMonths(planned)}` : " (donation / extra)";
   await notifyAdmins(
     "admin_zelle_reported",
-    `${member.full_name} sent a ${amount} Zelle payment${covers}`,
+    `${member.full_name} sent a ${amount} ${via} payment${covers}`,
     [
-      `${member.full_name} says they sent ${amount} by Zelle${covers}.`,
+      `${member.full_name} says they sent ${amount} by ${via}${covers}.`,
       ...(note ? [`Their note: "${note}"`] : []),
       "",
-      `Check your bank for a Zelle payment from ${member.full_name}, then open the admin dashboard and tap "Received" (or "Not received"):`,
+      `Check ${method === "venmo" ? "Venmo" : "your bank"} for a ${via} payment from ${member.full_name}, then open the admin dashboard and tap "Received" (or "Not received"):`,
       `${siteUrl()}/admin`,
     ].join("\n"),
     `admin_zelle_reported:${paymentId}`,
@@ -441,7 +445,7 @@ export async function reportZellePayment(_prev: ActionState, formData: FormData)
   refreshEverything();
   return {
     ok: true,
-    message: `Thanks! Your ${amount} Zelle payment${covers} is marked PENDING. It turns PAID once an administrator confirms it arrived.`,
+    message: `Thanks! Your ${amount} ${via} payment${covers} is marked PENDING. It turns PAID once an administrator confirms it arrived.`,
   };
 }
 

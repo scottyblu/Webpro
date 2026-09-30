@@ -72,12 +72,31 @@ export function SettingsForm({ settings }: { settings: ClubSettings }) {
         </Field>
       </fieldset>
 
+      <fieldset className="grid gap-4 sm:grid-cols-2">
+        <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">Venmo (shown to members)</legend>
+        <Field
+          label="Venmo username"
+          htmlFor="venmo_username"
+          hint="Without the @. Members get a button that opens Venmo with the amount filled in. Leave blank to hide Venmo."
+        >
+          <Input
+            id="venmo_username"
+            name="venmo_username"
+            defaultValue={settings.venmo_username ?? ""}
+            placeholder="e.g. BreakfastClub-8950"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+        </Field>
+      </fieldset>
+
       <fieldset className="grid gap-4">
         <legend className="mb-3 text-sm font-semibold uppercase tracking-wide text-stone-500">Notification emails</legend>
         <Field
           label="Send admin alerts to"
           htmlFor="notification_emails"
-          hint="One email per line (up to 10). These addresses get an alert when a member reports a Zelle payment, a list of who still owes a few days after the due date, and a summary at the start of each month."
+          hint="One email per line (up to 10). These addresses get an alert when a member reports a Zelle or Venmo payment, a list of who still owes a few days after the due date, and a summary at the start of each month."
         >
           <Textarea
             id="notification_emails"

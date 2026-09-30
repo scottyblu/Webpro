@@ -71,6 +71,8 @@ The complete schema is in two files. Run them **in order** in the Supabase SQL E
 3. **[`supabase/migrations/0003_admin_notifications.sql`](supabase/migrations/0003_admin_notifications.sql)**: the admin “Notification emails” list
 4. **[`supabase/migrations/0004_verified_members_only.sql`](supabase/migrations/0004_verified_members_only.sql)**: people only become members after confirming their email (unconfirmed sign-ups never appear in the members list)
 5. **[`supabase/migrations/0005_allocations_and_reminders.sql`](supabase/migrations/0005_allocations_and_reminders.sql)**: multi-month / yearly / custom payments (`payment_allocations`), the $20 minimum, void / restore / delete / wipe functions, member reminder preferences, reminder settings and app (push) notification subscriptions. Existing payments are kept and converted.
+6. **[`supabase/migrations/0006_club_logo.sql`](supabase/migrations/0006_club_logo.sql)**: the firehouse logo uploaded in Settings (login screen, menu and app icon)
+7. **[`supabase/migrations/0007_venmo.sql`](supabase/migrations/0007_venmo.sql)**: the Venmo username members pay (Settings → Venmo)
 
 Together they create:
 
@@ -258,6 +260,8 @@ For any month, each member is:
 | **CANCELLED** (gray) | the member was cancelled/deactivated |
 
 **Payment reminders.** Settings → Payment reminders: automatic reminders N days before the due date (default 3, 1 and 0), optional overdue reminders N days after (default 1, 3, 7), which channels to use (text, email, app) and custom messages. Each member picks their preference (Text / Email / App / Text + Email / All / None) on their profile. A daily job (`/api/cron/reminders`) sends a reminder only for months that are still unpaid, so paying stops them and voiding a payment restarts them. Each reminder is sent once per member + month + type + day. Admins can also tap **Send reminder** on a member's profile. Everything sent is listed under **Settings → Notification history** (`/admin/notifications`) and on each member's profile. App notifications use the standard Web Push protocol (no extra service); members turn them on from their dashboard after installing the app.
+
+**Venmo.** Settings → Venmo username adds a **Pay on Venmo** button that opens the Venmo app with the amount and a note already filled in. Members then tap **I've sent my Venmo payment**, which works exactly like the Zelle flow below.
 
 **Zelle flow.** Settings → Zelle holds the recipient name and Zelle email/phone. Members see those details, a ready-made memo (“Breakfast Club – September 2026 – Mike Jones”) and an **“I’ve sent my Zelle payment”** button, which records a PENDING Zelle payment for the month. The admin dashboard lists these under **Waiting for confirmation**. **Received** makes it PAID (and sends a confirmation); **Not received** voids it (kept in history) and the member can report again. Zelle has no way for apps to see payments, so this confirmation step is what keeps the records accurate. Reminder messages include the Zelle details.
 
